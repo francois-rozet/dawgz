@@ -3,7 +3,7 @@
 ```python
 import time
 
-from dawgz import job, after, waitfor
+from dawgz import job, after, waitfor, scheduler
 
 @job(name='A')
 def a():
@@ -19,8 +19,8 @@ def b():
     print('b')
     raise Exception()
 
-@after(a, cond='success')
-@after(b, cond='any')
+@after(a, status='success')
+@after(b, status='any')
 @waitfor('all')
 @job(name='C')
 def c():
@@ -28,5 +28,5 @@ def c():
     time.sleep(1)
     print('c')
 
-c()  # prints a b b a c c
+scheduler(backend=None)(c)  # prints a b b a c c
 ```

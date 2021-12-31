@@ -1,8 +1,5 @@
 r"""Workflow graph components"""
 
-import asyncio
-
-from functools import cached_property
 from typing import Any, Callable, Iterator, Union
 
 
@@ -38,7 +35,7 @@ class Node(object):
     def parents(self) -> list['Node']:
         return list(self._parents)
 
-    def cycles(self, backward: bool = True) -> Iterator[list['Node']]:
+    def cycles(self, backward: bool = False) -> Iterator[list['Node']]:
         path = [self]
         tree = {self: self.parents if backward else self.children}
 
@@ -83,10 +80,6 @@ class Job(Node):
         f: Callable,
         name: str = None,
         array: Union[int, list[int], range] = None,
-        cpus: int = 1,
-        gpus: int = 0,
-        ram: str = '2GB',
-        time: str = '1-00:00:00',
         env: list[str] = [],
         **kwargs,
     ):
@@ -98,155 +91,53 @@ class Job(Node):
             array = range(array)
         self.array = array
 
-        # Slurm settings
-        self.settings = kwargs.copy()
-        self.settings['job-name'] = name
-        self.settings['cpus-per-task'] = f'{cpus}'
-        self.settings['gpus-per-task'] = f'{gpus}'
-        self.settings['mem'] = ram
-        self.settings['time'] = time
+        # Environment commands
+        self.env = env
 
-        if type(array) is range:
-            self.settings['array'] = f'{array.start}-{array.stop-1}:{array.step}'
-        elif type(array) is list:
-            self.settings['array'] = ','.join(map(str, array))
-
-        # Environment
-        self.environment = env
+        # Settings
+        self.settings = {
+            'cpus': 1,
+            'gpus': 0,
+            'ram': '2GB',
+            'time': '1-00:00:00',
+        }
+        self.settings.update(kwargs)
 
         # Dependencies
-        self._wait = 'all'
+        self._waitfor = 'all'
 
-        # Backend
-        self._backend = None
+    def __call__(self, *args, **kwargs) -> Any:
+        return self.f(*args, **kwargs)
 
     def __repr__(self) -> str:
-        if 'array' in self.settings:
-            return self.name + '[' + self.settings['array'] + ']'
-        return self.name
+        if self.array is not None:
+            array = self.array
+
+            if type(array) is range:
+                array = f'[{array.start}:{array.stop}:{array.step}]'
+            else:
+                array = '[' + ','.join(map(str, array)) + ']'
+        else:
+            array = ''
+
+        return self.name + array
 
     @property
     def dependencies(self) -> dict['Job', str]:
         return self._parents
 
-    def after(self, *jobs, condition: str = 'success') -> None:
-        assert not self.frozen
-        assert condition in ['success', 'failure', 'any']
+    def after(self, *deps, status: str = 'success') -> None:
+        assert status in ['success', 'failure', 'any']
 
-        for job in jobs:
-            self.has_parent(job, condition)
-            job.backend = self.backend
+        for dep in deps:
+            self.has_parent(dep, status)
 
     @property
     def waitfor(self) -> str:
-        return self._wait
+        return self._waitfor
 
     @waitfor.setter
     def waitfor(self, mode: str = 'all') -> None:
-        assert not self.frozen
         assert mode in ['all', 'any']
 
-        self._wait = mode
-
-    @property
-    def backend(self) -> str:
-        return self._backend
-
-    @backend.setter
-    def backend(self, backend: str) -> None:
-        assert not self.frozen
-        assert backend in [None, 'slurm']
-
-        if self._backend == backend:
-            return
-
-        self._backend = backend
-
-        for job in self.dependencies:
-            job.backend = backend
-
-    @property
-    def frozen(self) -> bool:
-        return 'task' in self.__dict__
-
-    @cached_property
-    def task(self) -> asyncio.Task:
-        return asyncio.create_task(submit(self))
-
-    async def routine(self) -> Any:
-        return await self.task
-
-    def __call__(self) -> Any:
-        for node in self.dfs(backward=True):
-            if self.backend != node.backend:
-                raise DependencyBackendConflictError(f'jobs {self} and {node} have different backends')
-
-        for cycle in self.cycles(backward=True):
-            raise CyclicDependencyGraphError(' <- '.join(map(str, cycle)))
-
-        return asyncio.run(self.routine())
-
-
-class DependencyBackendConflictError(Exception):
-    pass
-
-
-class CyclicDependencyGraphError(Exception):
-    pass
-
-
-async def transform(job: Job, condition: str = 'success') -> Any:
-    try:
-        result = await job.task
-    except Exception as e:
-        if condition == 'success':
-            raise e
-        else:
-            return None
-    else:
-        if condition == 'failure':
-            raise JobNotFailedException(f'{job}')
-        else:
-            return result
-
-
-async def submit(self: Job) -> Any:
-    pending = {
-        asyncio.create_task(transform(job, condition))
-        for job, condition in self.dependencies.items()
-    }
-
-    while pending:
-        done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
-
-        for task in done:
-            try:
-                task.result()
-            except Exception as e:
-                if self.waitfor == 'all':
-                    raise DependencyNeverSatisfiedException(f'aborting job {self}') from e
-            else:
-                if self.waitfor == 'any':
-                    break
-        else:
-            continue
-        break
-    else:
-        if self.waitfor == 'any':
-            raise DependencyNeverSatisfiedException(f'aborting job {self}')
-
-    if self.array is None:
-        return await asyncio.to_thread(self.f)
-
-    return await asyncio.gather(*[
-        asyncio.to_thread(self.f, i)
-        for i in self.array
-    ])
-
-
-class DependencyNeverSatisfiedException(Exception):
-    pass
-
-
-class JobNotFailedException(Exception):
-    pass
+        self._waitfor = mode
