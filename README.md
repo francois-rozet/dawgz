@@ -3,13 +3,14 @@
 ```python
 import time
 
-from dawgz import job, after, waitfor, scheduler
+from dawgz import job, after, waitfor, ensure, scheduler
 
 @job(name='A')
 def a():
     print('a')
     time.sleep(3)
     print('a')
+    raise Exception()
 
 @job(name='B')
 def b():
@@ -17,16 +18,26 @@ def b():
     print('b')
     time.sleep(1)
     print('b')
-    raise Exception()
 
-@after(a, status='success')
-@after(b, status='any')
+finished = [True] * 1000
+finished[420] = False
+
+@ensure(lambda i: finished[i])  # postcondition
+@after(a, b)
+@waitfor('any')
+@job(name='C', array=int(1e3))
+def c(i: int):
+    print(f'c{i}')
+    finished[i] = True
+
+@after(a, status='any')
+@after(b, c, status='success')
 @waitfor('all')
-@job(name='C')
-def c():
-    print('c')
+@job(name='D')
+def d():
+    print('d')
     time.sleep(1)
-    print('c')
+    print('d')
 
-scheduler(backend=None)(c)  # prints a b b a c c
+scheduler(backend=None)(d)  # prints a b b c420 a d d
 ```

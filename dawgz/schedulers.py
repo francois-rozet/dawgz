@@ -23,6 +23,8 @@ class Scheduler(ABC):
         for cycle in job.cycles(backward=True):
             raise CyclicDependencyGraphError(' <- '.join(map(str, cycle)))
 
+        job.prune()
+
         return asyncio.run(self.submit(job))
 
     async def submit(self, job: Job) -> Any:

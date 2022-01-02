@@ -1,5 +1,6 @@
 r"""Workflow graph components"""
 
+from functools import cache, cached_property
 from typing import Any, Callable, Iterator, Union
 
 
@@ -20,12 +21,18 @@ class Node(object):
     def __str__(self) -> str:
         return repr(self)
 
-    def has_child(self, node: 'Node', edge: Any = None) -> None:
+    def add_child(self, node: 'Node', edge: Any = None) -> None:
         self._children[node] = edge
         node._parents[self] = edge
 
-    def has_parent(self, node: 'Node', edge: Any = None) -> None:
-        node.has_child(self, edge)
+    def add_parent(self, node: 'Node', edge: Any = None) -> None:
+        node.add_child(self, edge)
+
+    def rm_child(self, node: 'Node') -> None:
+        del self._children[node]
+
+    def rm_parent(self, node: 'Node') -> None:
+        node.rm_child(self)
 
     @property
     def children(self) -> list['Node']:
@@ -79,7 +86,7 @@ class Job(Node):
         self,
         f: Callable,
         name: str = None,
-        array: Union[int, list[int], range] = None,
+        array: Union[int, set[int], range] = None,
         env: list[str] = [],
         **kwargs,
     ):
@@ -106,8 +113,16 @@ class Job(Node):
         # Dependencies
         self._waitfor = 'all'
 
-    def __call__(self, *args, **kwargs) -> Any:
-        return self.f(*args, **kwargs)
+        # Postcondition
+        self.postcondition = None
+
+    def __call__(self, *args) -> Any:
+        result = self.f(*args)
+
+        if self.postcondition is not None:
+            assert self.postcondition(*args), f'job {self} does not satisfy its postcondition'
+
+        return result
 
     def __repr__(self) -> str:
         if self.array is not None:
@@ -130,7 +145,7 @@ class Job(Node):
         assert status in ['success', 'failure', 'any']
 
         for dep in deps:
-            self.has_parent(dep, status)
+            self.add_parent(dep, status)
 
     @property
     def waitfor(self) -> str:
@@ -141,3 +156,42 @@ class Job(Node):
         assert mode in ['all', 'any']
 
         self._waitfor = mode
+
+    def ensure(self, condition: Callable) -> None:
+        self.postcondition = condition
+
+    @cached_property
+    def done(self) -> bool:
+        if self.postcondition is not None:
+            if self.array is None:
+                return self.postcondition()
+            else:
+                return all(map(self.postcondition, self.array))
+
+        return False
+
+    @cache
+    def prune(self) -> None:
+        done = {
+            dep for dep, status in self.dependencies.items()
+            if status == 'success' and dep.done
+        }
+
+        if self.waitfor == 'any' and done:
+            for dep in self.dependencies:
+                self.rm_parent(dep)
+        elif self.waitfor == 'all':
+            for dep in done:
+                self.rm_parent(dep)
+
+        for dep in self.dependencies:
+            dep.prune()
+
+        if self.array is not None:
+            pending = {
+                i for i in self.array
+                if not self.postcondition(i)
+            }
+
+            if len(pending) < len(self.array):
+                self.array = pending
