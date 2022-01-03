@@ -1,13 +1,13 @@
 r"""Directed Acyclic Workflow Graph Scheduling"""
 
-__version__ = '0.0.5'
+__version__ = '0.0.6'
 
 
 from functools import partial
 from typing import Callable, Union
 
 from .workflow import Job
-from .schedulers import scheduler
+from .schedulers import schedule
 
 
 def job(f: Callable = None, /, **kwargs) -> Union[Callable, Job]:

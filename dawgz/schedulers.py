@@ -1,4 +1,4 @@
-r"""Schedulers"""
+r"""Scheduling backends"""
 
 import asyncio
 import cloudpickle as pkl
@@ -7,7 +7,7 @@ import os
 from abc import ABC, abstractmethod
 from datetime import datetime
 from pathlib import Path
-from subprocess import check_output
+from subprocess import run
 from typing import Any
 
 from .workflow import Job
@@ -16,16 +16,17 @@ from .workflow import Job
 class Scheduler(ABC):
     r"""Abstract workflow scheduler"""
 
-    def __init__(self):
+    def __init__(self, *jobs):
         self.submissions = {}
 
-    def __call__(self, job: Job) -> Any:
-        for cycle in job.cycles(backward=True):
+        for cycle in Job.cycles(*jobs, backward=True):
             raise CyclicDependencyGraphError(' <- '.join(map(str, cycle)))
 
-        job.prune()
+        for job in jobs:
+            job.prune()
 
-        return asyncio.run(self.submit(job))
+    async def gather(self, *jobs) -> list[Any]:
+        return await asyncio.gather(*map(self.submit, jobs))
 
     async def submit(self, job: Job) -> Any:
         if job not in self.submissions:
@@ -42,10 +43,14 @@ class CyclicDependencyGraphError(Exception):
     pass
 
 
-def scheduler(backend: None, **kwargs) -> Scheduler:
-    return {
+def schedule(*jobs, backend: str = None, **kwargs) -> list[Any]:
+    scheduler = {
+        'default': Default,
+        'bash': Bash,
         'slurm': Slurm,
-    }.get(backend, Default)(**kwargs)
+    }.get(backend, Default)(*jobs, **kwargs)
+
+    return asyncio.run(scheduler.gather(*jobs))
 
 
 class Default(Scheduler):
@@ -112,16 +117,17 @@ class JobNotFailedException(Exception):
     pass
 
 
-class Slurm(Scheduler):
-    r"""Slurm scheduler"""
+class Bash(Scheduler):
+    r"""Bash scheduler"""
 
     def __init__(
         self,
+        *jobs,
         name: str = None,
         path: str = '.dawgz',
         env: list[str] = [],
     ):
-        super().__init__()
+        super().__init__(*jobs)
 
         if name is None:
             name = datetime.now().strftime('%y%m%d_%H%M%S')
@@ -133,18 +139,51 @@ class Slurm(Scheduler):
         self.path = path.resolve()
         self.env = env
 
+        self.pklfile = self.path / 'table.pkl'
+
+        with open(self.pklfile, 'wb') as f:
+            table = {
+                hash(job): job
+                for job in Job.dfs(*jobs, backward=True)
+            }
+
+            f.write(pkl.dumps(table))
+
+    def scriptlines(self, job: Job, variables: dict[str, str] = {}) -> list[str]:
+        # Exit at first error
+        lines = ['set -e', '']
+
+        # Environment
+        if self.env:
+            lines.extend([*self.env, ''])
+
+        # Variables
+        if variables:
+            for key, value in variables.items():
+                lines.append(f'{key}={value}')
+            lines.append('')
+
+        # Unpickle
+        args = '' if job.array is None else '$i'
+        unpickle = f'python -c "import pickle; pickle.load(open(r\'{self.pklfile}\', \'rb\'))[{hash(job)}]({args})"'
+
+        lines.extend([unpickle, ''])
+
+        return lines
+
+    async def _submit(self, job: Job) -> str:
+        raise NotImplementedError()
+
+
+class Slurm(Bash):
+    r"""Slurm scheduler"""
+
     async def _submit(self, job: Job) -> str:
         # Wait for dependencies to be submitted
         jobids = await asyncio.gather(*[
             self.submit(dep)
             for dep in job.dependencies
         ])
-
-        # Pickle job instance
-        codefile = self.path / f'{job.name}.pkl'
-
-        with open(codefile, 'wb') as f:
-            f.write(pkl.dumps(job))
 
         # Write submission file
         lines = [
@@ -154,7 +193,7 @@ class Slurm(Scheduler):
         ]
 
         if job.array is None:
-            logfile = codefile.with_suffix('.log')
+            logfile = self.path / f'{job.name}.log'
         else:
             array = job.array
 
@@ -205,33 +244,20 @@ class Slurm(Scheduler):
             '#SBATCH --export=ALL',
             '#SBATCH --parsable',
             '#SBATCH --requeue',
+            '',
         ])
 
-        ## Exit at first error
-        lines.extend(['', 'set -o errexit', ''])
+        ## Script
+        lines.extend(self.scriptlines(job, {'i': '$SLURM_ARRAY_TASK_ID'}))
 
-        ## Environment
-        env = self.env + job.env
-        if env:
-            lines.extend([*env, ''])
-
-        ## Python
-        python = f'python -c "import pickle; pickle.load(open(r\'{codefile}\', \'rb\'))'
-
-        if job.array is None:
-            python += '()"'
-        else:
-            python += '($SLURM_ARRAY_TASK_ID)"'
-
-        lines.extend([python, ''])
-
-        ## File
-        bashfile = codefile.with_suffix('.sh')
+        ## Save
+        bashfile = self.path / f'{job.name}.sh'
 
         with open(bashfile, 'w') as f:
             f.write('\n'.join(lines))
 
         # Submit job
-        lines = check_output(['sbatch', str(bashfile)], text=True)
-        for jobid in lines.splitlines():
+        text = run(['sbatch', str(bashfile)], capture_output=True, check=True, text=True).stdout
+
+        for jobid in text.splitlines():
             return jobid

@@ -3,7 +3,7 @@
 ```python
 import time
 
-from dawgz import job, after, waitfor, ensure, scheduler
+from dawgz import job, after, waitfor, ensure, schedule
 
 @job(name='A')
 def a():
@@ -22,9 +22,9 @@ def b():
 finished = [True] * 1000
 finished[420] = False
 
-@ensure(lambda i: finished[i])  # postcondition
 @after(a, b)
 @waitfor('any')
+@ensure(lambda i: finished[i])
 @job(name='C', array=int(1e3))
 def c(i: int):
     print(f'c{i}')
@@ -39,5 +39,5 @@ def d():
     time.sleep(1)
     print('d')
 
-scheduler(backend=None)(d)  # prints a b b c420 a d d
+schedule(d, backend=None)  # prints a b b c420 a d d
 ```

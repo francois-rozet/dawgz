@@ -42,29 +42,9 @@ class Node(object):
     def parents(self) -> list['Node']:
         return list(self._parents)
 
-    def cycles(self, backward: bool = False) -> Iterator[list['Node']]:
-        path = [self]
-        tree = {self: self.parents if backward else self.children}
-
-        while path:
-            branches = tree[path[-1]]
-
-            if len(branches) > 0:
-                node = branches.pop()
-            else:
-                tree[path.pop()] = None
-                continue
-
-            if node in tree:  # node has been visited
-                if tree[node] is not None:  # node is in current path
-                    yield path + [node]
-                continue
-
-            path.append(node)
-            tree[node] = node.parents if backward else node.children
-
-    def dfs(self, backward: bool = False) -> Iterator['Node']:
-        queue = [self]
+    @staticmethod
+    def dfs(*roots, backward: bool = False) -> set['Node']:
+        queue = list(roots)
         visited = set()
 
         while queue:
@@ -76,7 +56,35 @@ class Node(object):
             visited.add(node)
             queue.extend(node.parents if backward else node.children)
 
-            yield node
+        return visited
+
+    @staticmethod
+    def cycles(*roots, backward: bool = False) -> Iterator[list['Node']]:
+        roots = list(roots)
+        path = []
+        tree = {}
+
+        while roots:
+            node = roots.pop()
+            path.append(node)
+            tree[node] = node.parents if backward else node.children
+
+            while path:
+                branches = tree[path[-1]]
+
+                if len(branches) > 0:
+                    node = branches.pop()
+                else:
+                    tree[path.pop()] = None
+                    continue
+
+                if node in tree:  # node has been visited
+                    if tree[node] is not None:  # node is in the current path
+                        yield path + [node]
+                    continue
+
+                path.append(node)
+                tree[node] = node.parents if backward else node.children
 
 
 class Job(Node):
@@ -87,7 +95,6 @@ class Job(Node):
         f: Callable,
         name: str = None,
         array: Union[int, set[int], range] = None,
-        env: list[str] = [],
         **kwargs,
     ):
         super().__init__(f.__name__ if name is None else name)
@@ -97,9 +104,6 @@ class Job(Node):
         if type(array) is int:
             array = range(array)
         self.array = array
-
-        # Environment commands
-        self.env = env
 
         # Settings
         self.settings = {
