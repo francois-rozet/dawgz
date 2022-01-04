@@ -123,13 +123,25 @@ class Job(Node):
         self.postcondition = None
         self.pruned = False
 
+    @property
+    def fn(self) -> Callable:
+        name, f, post = self.name, self.f, self.postcondition
+
+        if self.done:
+            f = lambda *args: None
+
+        def call(*args) -> Any:
+            result = f(*args)
+
+            if post is not None:
+                assert post(*args), f'job {name} does not satisfy its postcondition'
+
+            return result
+
+        return call
+
     def __call__(self, *args) -> Any:
-        result = self.f(*args)
-
-        if self.postcondition is not None:
-            assert self.postcondition(*args), f'job {self} does not satisfy its postcondition'
-
-        return result
+        return self.fn(*args)
 
     def __repr__(self) -> str:
         if self.array is not None:

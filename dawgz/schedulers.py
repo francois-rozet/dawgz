@@ -12,7 +12,7 @@ from datetime import datetime
 from functools import partial
 from pathlib import Path
 from subprocess import run
-from typing import Any, Dict, List
+from typing import Any, Callable, Dict, List
 
 from .workflow import Job
 
@@ -20,14 +20,8 @@ from .workflow import Job
 class Scheduler(ABC):
     r"""Abstract workflow scheduler"""
 
-    def __init__(self, *jobs):
+    def __init__(self):
         self.submissions = {}
-
-        for cycle in Job.cycles(*jobs, backward=True):
-            raise CyclicDependencyGraphError(' <- '.join(map(str, cycle)))
-
-        for job in jobs:
-            job.prune()
 
     async def gather(self, *jobs) -> List[Any]:
         return await asyncio.gather(*map(self.submit, jobs))
@@ -43,18 +37,24 @@ class Scheduler(ABC):
         pass
 
 
-class CyclicDependencyGraphError(Exception):
-    pass
-
-
 def schedule(*jobs, backend: str = None, **kwargs) -> List[Any]:
+    for cycle in Job.cycles(*jobs, backward=True):
+        raise CyclicDependencyGraphError(' <- '.join(map(str, cycle)))
+
+    for job in jobs:
+        job.prune()
+
     scheduler = {
         'default': Default,
         'bash': Bash,
         'slurm': Slurm,
-    }.get(backend, Default)(*jobs, **kwargs)
+    }.get(backend, Default)(**kwargs)
 
     return asyncio.run(scheduler.gather(*jobs))
+
+
+class CyclicDependencyGraphError(Exception):
+    pass
 
 
 class Default(Scheduler):
@@ -103,25 +103,25 @@ class Default(Scheduler):
         # Execute job
         try:
             if job.array is None:
-                return await to_thread(job.__call__)
+                return await to_thread(job.fn)
             else:
                 return await asyncio.gather(*(
-                    to_thread(job.__call__, i)
+                    to_thread(job.fn, i)
                     for i in job.array
                 ))
         except Exception as error:
             return error
 
 
-async def to_thread(func, /, *args, **kwargs):
-    r"""Asynchronously run function *func* in a separate thread.
+async def to_thread(func: Callable, /, *args, **kwargs) -> Any:
+    r"""Asynchronously run function `func` in a separate thread.
 
     Any *args and **kwargs supplied for this function are directly passed
-    to *func*. Also, the current :class:`contextvars.Context` is propagated,
+    to `func`. Also, the current `contextvars.Context` is propagated,
     allowing context variables from the main thread to be accessed in the
     separate thread.
 
-    Return a coroutine that can be awaited to get the eventual result of *func*.
+    Return a coroutine that can be awaited to get the eventual result of `func`.
 
     References:
         https://github.com/python/cpython/blob/main/Lib/asyncio/threads.py
@@ -164,21 +164,17 @@ class Bash(Scheduler):
         self.path = path.resolve()
         self.env = env
 
-        jobs = Job.dfs(*jobs, backward=True)
-
-        self.counts = Counter(map(lambda j: j.name, jobs))
-
-        table = {self.id(job): job for job in jobs}
-
-        self.pklfile = self.path / 'table.pkl'
-        with open(self.pklfile, 'wb') as f:
-            f.write(pkl.dumps(table))
+        self.table = {}
 
     def id(self, job: Job) -> str:
-        if self.counts[job.name] > 1:
-            return str(id(job))
+        if self.table.get(job.name, job) is job:
+            identifier = job.name
         else:
-            return job.name
+            identifier = str(id(job))
+
+        self.table[identifier] = job
+
+        return identifier
 
     def scriptlines(self, job: Job, variables: Dict[str, str] = {}) -> List[str]:
         # Exit at first error
@@ -194,9 +190,15 @@ class Bash(Scheduler):
                 lines.append(f'{key}={value}')
             lines.append('')
 
+        # Pickle function
+        pklfile = self.path / f'{self.id(job)}.pkl'
+
+        with open(pklfile, 'wb') as f:
+            f.write(pkl.dumps(job.fn))
+
         # Unpickle
         args = '' if job.array is None else '$i'
-        unpickle = f'python -c "import pickle; pickle.load(open(r\'{self.pklfile}\', \'rb\'))[\'{self.id(job)}\']({args})"'
+        unpickle = f'python -c "import pickle; pickle.load(open(r\'{pklfile}\', \'rb\'))({args})"'
 
         lines.extend([unpickle, ''])
 
