@@ -197,7 +197,7 @@ class Job(Node):
         for dep in self.dependencies:
             dep.prune()
 
-        if self.array is not None:
+        if self.array is not None and self.postcondition is not None:
             pending = {
                 i for i in self.array
                 if not self.postcondition(i)

@@ -19,13 +19,13 @@ def b():
     time.sleep(1)
     print('b')
 
-finished = [True] * 1000
-finished[420] = False
+finished = [True] * 100
+finished[42] = False
 
 @after(a, b)
 @waitfor('any')
 @ensure(lambda i: finished[i])
-@job(name='C', array=int(1e3))
+@job(name='C', array=100)
 def c(i: int):
     print(f'c{i}')
     finished[i] = True
@@ -39,5 +39,5 @@ def d():
     time.sleep(1)
     print('d')
 
-schedule(d, backend=None)  # prints a b b c420 a d d
+schedule(d, backend=None)  # prints a b b c42 a d d
 ```
