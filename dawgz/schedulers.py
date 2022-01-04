@@ -2,14 +2,17 @@ r"""Scheduling backends"""
 
 import asyncio
 import cloudpickle as pkl
+import contextvars
 import os
 
 from abc import ABC, abstractmethod
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from functools import partial
 from pathlib import Path
 from subprocess import run
-from typing import Any
+from typing import Any, Dict, List
 
 from .workflow import Job
 
@@ -26,7 +29,7 @@ class Scheduler(ABC):
         for job in jobs:
             job.prune()
 
-    async def gather(self, *jobs) -> list[Any]:
+    async def gather(self, *jobs) -> List[Any]:
         return await asyncio.gather(*map(self.submit, jobs))
 
     async def submit(self, job: Job) -> Any:
@@ -44,7 +47,7 @@ class CyclicDependencyGraphError(Exception):
     pass
 
 
-def schedule(*jobs, backend: str = None, **kwargs) -> list[Any]:
+def schedule(*jobs, backend: str = None, **kwargs) -> List[Any]:
     scheduler = {
         'default': Default,
         'bash': Bash,
@@ -100,14 +103,35 @@ class Default(Scheduler):
         # Execute job
         try:
             if job.array is None:
-                return await asyncio.to_thread(job.__call__)
+                return await to_thread(job.__call__)
             else:
-                return await asyncio.gather(*[
-                    asyncio.to_thread(job.__call__, i)
+                return await asyncio.gather(*(
+                    to_thread(job.__call__, i)
                     for i in job.array
-                ])
+                ))
         except Exception as error:
             return error
+
+
+async def to_thread(func, /, *args, **kwargs):
+    r"""Asynchronously run function *func* in a separate thread.
+
+    Any *args and **kwargs supplied for this function are directly passed
+    to *func*. Also, the current :class:`contextvars.Context` is propagated,
+    allowing context variables from the main thread to be accessed in the
+    separate thread.
+
+    Return a coroutine that can be awaited to get the eventual result of *func*.
+
+    References:
+        https://github.com/python/cpython/blob/main/Lib/asyncio/threads.py
+    """
+
+    loop = asyncio.get_running_loop()
+    ctx = contextvars.copy_context()
+    func_call = partial(ctx.run, func, *args, **kwargs)
+
+    return await loop.run_in_executor(None, func_call)
 
 
 class DependencyNeverSatisfiedException(Exception):
@@ -126,7 +150,7 @@ class Bash(Scheduler):
         *jobs,
         name: str = None,
         path: str = '.dawgz',
-        env: list[str] = [],
+        env: List[str] = [],
     ):
         super().__init__(*jobs)
 
@@ -156,7 +180,7 @@ class Bash(Scheduler):
         else:
             return job.name
 
-    def scriptlines(self, job: Job, variables: dict[str, str] = {}) -> list[str]:
+    def scriptlines(self, job: Job, variables: Dict[str, str] = {}) -> List[str]:
         # Exit at first error
         lines = ['set -e', '']
 

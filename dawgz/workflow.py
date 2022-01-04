@@ -1,7 +1,7 @@
 r"""Workflow graph components"""
 
-from functools import cache, cached_property
-from typing import Any, Callable, Iterator, Union
+from functools import cached_property
+from typing import Any, Callable, Dict, Iterator, List, Set, Tuple, Union
 
 
 class Node(object):
@@ -35,15 +35,15 @@ class Node(object):
         node.rm_child(self)
 
     @property
-    def children(self) -> list['Node']:
+    def children(self) -> List['Node']:
         return list(self._children)
 
     @property
-    def parents(self) -> list['Node']:
+    def parents(self) -> List['Node']:
         return list(self._parents)
 
     @staticmethod
-    def dfs(*roots, backward: bool = False) -> set['Node']:
+    def dfs(*roots, backward: bool = False) -> Set['Node']:
         queue = list(roots)
         visited = set()
 
@@ -59,7 +59,7 @@ class Node(object):
         return visited
 
     @staticmethod
-    def cycles(*roots, backward: bool = False) -> Iterator[list['Node']]:
+    def cycles(*roots, backward: bool = False) -> Iterator[List['Node']]:
         queue = [list(roots)]
         path = []
         pathset = set()
@@ -96,7 +96,7 @@ class Job(Node):
         self,
         f: Callable,
         name: str = None,
-        array: Union[int, set[int], range] = None,
+        array: Union[int, Set[int], range] = None,
         **kwargs,
     ):
         super().__init__(f.__name__ if name is None else name)
@@ -121,6 +121,7 @@ class Job(Node):
 
         # Postcondition
         self.postcondition = None
+        self.pruned = False
 
     def __call__(self, *args) -> Any:
         result = self.f(*args)
@@ -144,7 +145,7 @@ class Job(Node):
         return self.name + array
 
     @property
-    def dependencies(self) -> dict['Job', str]:
+    def dependencies(self) -> Dict['Job', str]:
         return self._parents
 
     def after(self, *deps, status: str = 'success') -> None:
@@ -176,8 +177,11 @@ class Job(Node):
 
         return False
 
-    @cache
     def prune(self) -> None:
+        if self.pruned:
+            return
+        self.pruned = True
+
         done = {
             dep for dep, status in self.dependencies.items()
             if status == 'success' and dep.done
