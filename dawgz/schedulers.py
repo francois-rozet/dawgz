@@ -5,6 +5,7 @@ import cloudpickle as pkl
 import os
 
 from abc import ABC, abstractmethod
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from subprocess import run
@@ -139,15 +140,21 @@ class Bash(Scheduler):
         self.path = path.resolve()
         self.env = env
 
+        jobs = Job.dfs(*jobs, backward=True)
+
+        self.counts = Counter(map(lambda j: j.name, jobs))
+
+        table = {self.id(job): job for job in jobs}
+
         self.pklfile = self.path / 'table.pkl'
-
         with open(self.pklfile, 'wb') as f:
-            table = {
-                hash(job): job
-                for job in Job.dfs(*jobs, backward=True)
-            }
-
             f.write(pkl.dumps(table))
+
+    def id(self, job: Job) -> str:
+        if self.counts[job.name] > 1:
+            return str(id(job))
+        else:
+            return job.name
 
     def scriptlines(self, job: Job, variables: dict[str, str] = {}) -> list[str]:
         # Exit at first error
@@ -165,7 +172,7 @@ class Bash(Scheduler):
 
         # Unpickle
         args = '' if job.array is None else '$i'
-        unpickle = f'python -c "import pickle; pickle.load(open(r\'{self.pklfile}\', \'rb\'))[{hash(job)}]({args})"'
+        unpickle = f'python -c "import pickle; pickle.load(open(r\'{self.pklfile}\', \'rb\'))[\'{self.id(job)}\']({args})"'
 
         lines.extend([unpickle, ''])
 
@@ -193,7 +200,7 @@ class Slurm(Bash):
         ]
 
         if job.array is None:
-            logfile = self.path / f'{job.name}.log'
+            logfile = self.path / f'{self.id(job)}.log'
         else:
             array = job.array
 
@@ -202,7 +209,7 @@ class Slurm(Bash):
             else:
                 lines.append('#SBATCH --array=' + ','.join(map(str, array)))
 
-            logfile = self.path / f'{job.name}_%a.log'
+            logfile = self.path / f'{self.id(job)}_%a.log'
 
         lines.extend([f'#SBATCH --output={logfile}', '#'])
 
@@ -251,7 +258,7 @@ class Slurm(Bash):
         lines.extend(self.scriptlines(job, {'i': '$SLURM_ARRAY_TASK_ID'}))
 
         ## Save
-        bashfile = self.path / f'{job.name}.sh'
+        bashfile = self.path / f'{self.id(job)}.sh'
 
         with open(bashfile, 'w') as f:
             f.write('\n'.join(lines))

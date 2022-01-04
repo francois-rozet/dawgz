@@ -53,38 +53,40 @@ class Node(object):
             if node in visited:
                 continue
 
-            visited.add(node)
             queue.extend(node.parents if backward else node.children)
+            visited.add(node)
 
         return visited
 
     @staticmethod
     def cycles(*roots, backward: bool = False) -> Iterator[list['Node']]:
-        roots = list(roots)
+        queue = [list(roots)]
         path = []
-        tree = {}
+        pathset = set()
+        visited = set()
 
-        while roots:
-            node = roots.pop()
+        while queue:
+            branch = queue[-1]
+
+            if not branch:
+                if not path:
+                    break
+
+                queue.pop()
+                pathset.remove(path.pop())
+                continue
+
+            node = branch.pop()
+
+            if node in visited:
+                if node in pathset:
+                    yield path + [node]
+                continue
+
+            queue.append(node.parents if backward else node.children)
             path.append(node)
-            tree[node] = node.parents if backward else node.children
-
-            while path:
-                branches = tree[path[-1]]
-
-                if len(branches) > 0:
-                    node = branches.pop()
-                else:
-                    tree[path.pop()] = None
-                    continue
-
-                if node in tree:  # node has been visited
-                    if tree[node] is not None:  # node is in the current path
-                        yield path + [node]
-                    continue
-
-                path.append(node)
-                tree[node] = node.parents if backward else node.children
+            pathset.add(node)
+            visited.add(node)
 
 
 class Job(Node):
