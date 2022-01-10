@@ -39,5 +39,5 @@ def d():
     time.sleep(1)
     print('d')
 
-schedule(d, backend=None)  # prints a b b c42 a d d
+schedule(d, backend=None, pruning=True)  # prints a b b c42 a d d
 ```

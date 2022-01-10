@@ -2,19 +2,41 @@ r"""Scheduling backends"""
 
 import asyncio
 import cloudpickle as pkl
-import contextvars
 import os
+import shutil
 
 from abc import ABC, abstractmethod
-from collections import Counter
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from functools import partial
 from pathlib import Path
 from subprocess import run
-from typing import Any, Callable, Dict, List
+from typing import Any, Dict, List
 
-from .workflow import Job
+from .utils import to_thread
+from .workflow import Job, cycles, prune
+
+
+def schedule(
+    *jobs,
+    backend: str = None,
+    pruning: bool = True,
+    **kwargs,
+) -> List[Any]:
+    for cycle in cycles(*jobs, backward=True):
+        raise CyclicDependencyGraphError(' <- '.join(map(str, cycle)))
+
+    if pruning:
+        jobs = prune(*jobs)
+
+    scheduler = {
+        'local': LocalScheduler,
+        'slurm': SlurmScheduler,
+    }.get(backend, LocalScheduler)(**kwargs)
+
+    return asyncio.run(scheduler.gather(*jobs))
+
+
+class CyclicDependencyGraphError(Exception):
+    pass
 
 
 class Scheduler(ABC):
@@ -37,28 +59,8 @@ class Scheduler(ABC):
         pass
 
 
-def schedule(*jobs, backend: str = None, **kwargs) -> List[Any]:
-    for cycle in Job.cycles(*jobs, backward=True):
-        raise CyclicDependencyGraphError(' <- '.join(map(str, cycle)))
-
-    for job in jobs:
-        job.prune()
-
-    scheduler = {
-        'default': Default,
-        'bash': Bash,
-        'slurm': Slurm,
-    }.get(backend, Default)(**kwargs)
-
-    return asyncio.run(scheduler.gather(*jobs))
-
-
-class CyclicDependencyGraphError(Exception):
-    pass
-
-
-class Default(Scheduler):
-    r"""Default scheduler"""
+class LocalScheduler(Scheduler):
+    r"""Local scheduler"""
 
     async def condition(self, job: Job, status: str) -> Any:
         result = await self.submit(job)
@@ -113,27 +115,6 @@ class Default(Scheduler):
             return error
 
 
-async def to_thread(func: Callable, /, *args, **kwargs) -> Any:
-    r"""Asynchronously run function `func` in a separate thread.
-
-    Any *args and **kwargs supplied for this function are directly passed
-    to `func`. Also, the current `contextvars.Context` is propagated,
-    allowing context variables from the main thread to be accessed in the
-    separate thread.
-
-    Return a coroutine that can be awaited to get the eventual result of `func`.
-
-    References:
-        https://github.com/python/cpython/blob/main/Lib/asyncio/threads.py
-    """
-
-    loop = asyncio.get_running_loop()
-    ctx = contextvars.copy_context()
-    func_call = partial(ctx.run, func, *args, **kwargs)
-
-    return await loop.run_in_executor(None, func_call)
-
-
 class DependencyNeverSatisfiedException(Exception):
     pass
 
@@ -142,17 +123,21 @@ class JobNotFailedException(Exception):
     pass
 
 
-class Bash(Scheduler):
-    r"""Bash scheduler"""
+class SlurmScheduler(Scheduler):
+    r"""Slurm scheduler"""
 
     def __init__(
         self,
-        *jobs,
         name: str = None,
         path: str = '.dawgz',
-        env: List[str] = [],
+        shell: str = '/bin/bash',
+        env: List[str] = [],  # cd, virtualenv, conda, etc.
+        settings: Dict[str, Any] = {},
+        **kwargs,
     ):
-        super().__init__(*jobs)
+        super().__init__()
+
+        assert shutil.which('sbatch') is not None, 'sbatch executable not found'
 
         if name is None:
             name = datetime.now().strftime('%y%m%d_%H%M%S')
@@ -162,8 +147,23 @@ class Bash(Scheduler):
 
         self.name = name
         self.path = path.resolve()
+
+        # Environment
+        self.shell = shell
         self.env = env
 
+        # Settings
+        self.settings = settings.copy()
+        self.settings.update(kwargs)
+
+        self.translate = {
+            'cpus': 'cpus-per-task',
+            'gpus': 'gpus-per-task',
+            'ram': 'mem',
+            'timelimit': 'time',
+        }
+
+        # Identifier table
         self.table = {}
 
     def id(self, job: Job) -> str:
@@ -176,41 +176,6 @@ class Bash(Scheduler):
 
         return identifier
 
-    def scriptlines(self, job: Job, variables: Dict[str, str] = {}) -> List[str]:
-        # Exit at first error
-        lines = ['set -e', '']
-
-        # Environment
-        if self.env:
-            lines.extend([*self.env, ''])
-
-        # Variables
-        if variables:
-            for key, value in variables.items():
-                lines.append(f'{key}={value}')
-            lines.append('')
-
-        # Pickle function
-        pklfile = self.path / f'{self.id(job)}.pkl'
-
-        with open(pklfile, 'wb') as f:
-            f.write(pkl.dumps(job.fn))
-
-        # Unpickle
-        args = '' if job.array is None else '$i'
-        unpickle = f'python -c "import pickle; pickle.load(open(r\'{pklfile}\', \'rb\'))({args})"'
-
-        lines.extend([unpickle, ''])
-
-        return lines
-
-    async def _submit(self, job: Job) -> str:
-        raise NotImplementedError()
-
-
-class Slurm(Bash):
-    r"""Slurm scheduler"""
-
     async def _submit(self, job: Job) -> str:
         # Wait for dependencies to be submitted
         jobids = await asyncio.gather(*[
@@ -220,7 +185,7 @@ class Slurm(Bash):
 
         # Write submission file
         lines = [
-            '#!/usr/bin/env bash',
+            f'#!{self.shell}',
             '#',
             f'#SBATCH --job-name={job.name}',
         ]
@@ -239,16 +204,12 @@ class Slurm(Bash):
 
         lines.extend([f'#SBATCH --output={logfile}', '#'])
 
-        ## Resources
-        translate = {
-            'cpus': 'cpus-per-task',
-            'gpus': 'gpus-per-task',
-            'ram': 'mem',
-            'time': 'time',
-        }
+        ## Settings
+        settings = self.settings.copy()
+        settings.update(job.settings)
 
-        for key, value in job.settings.items():
-            key = translate.get(key, key)
+        for key, value in settings.items():
+            key = self.translate.get(key, key)
 
             if value is None:
                 lines.append(f'#SBATCH --{key}')
@@ -280,8 +241,25 @@ class Slurm(Bash):
             '',
         ])
 
-        ## Script
-        lines.extend(self.scriptlines(job, {'i': '$SLURM_ARRAY_TASK_ID'}))
+        ## Exit at first error
+        lines.extend(['set -e', ''])
+
+        ## Environment
+        if job.env:
+            lines.extend([*job.env, ''])
+        elif self.env:
+            lines.extend([*self.env, ''])
+
+        ## Pickle function
+        pklfile = self.path / f'{self.id(job)}.pkl'
+
+        with open(pklfile, 'wb') as f:
+            f.write(pkl.dumps(job.fn))
+
+        args = '' if job.array is None else '$SLURM_ARRAY_TASK_ID'
+        unpickle = f'python -c "import pickle; pickle.load(open(r\'{pklfile}\', \'rb\'))({args})"'
+
+        lines.extend([unpickle, ''])
 
         ## Save
         bashfile = self.path / f'{self.id(job)}.sh'

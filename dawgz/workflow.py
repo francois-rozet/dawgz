@@ -30,6 +30,7 @@ class Node(object):
 
     def rm_child(self, node: 'Node') -> None:
         del self._children[node]
+        del node._parents[self]
 
     def rm_parent(self, node: 'Node') -> None:
         node.rm_child(self)
@@ -42,51 +43,51 @@ class Node(object):
     def parents(self) -> List['Node']:
         return list(self._parents)
 
-    @staticmethod
-    def dfs(*roots, backward: bool = False) -> Set['Node']:
-        queue = list(roots)
-        visited = set()
 
-        while queue:
-            node = queue.pop()
+def dfs(*nodes, backward: bool = False) -> Iterator[Node]:
+    queue = list(nodes)
+    visited = set()
 
-            if node in visited:
-                continue
+    while queue:
+        node = queue.pop()
 
-            queue.extend(node.parents if backward else node.children)
-            visited.add(node)
+        if node in visited:
+            continue
+        else:
+            yield node
 
-        return visited
+        queue.extend(node.parents if backward else node.children)
+        visited.add(node)
 
-    @staticmethod
-    def cycles(*roots, backward: bool = False) -> Iterator[List['Node']]:
-        queue = [list(roots)]
-        path = []
-        pathset = set()
-        visited = set()
 
-        while queue:
-            branch = queue[-1]
+def cycles(*nodes, backward: bool = False) -> Iterator[List[Node]]:
+    queue = [list(nodes)]
+    path = []
+    pathset = set()
+    visited = set()
 
-            if not branch:
-                if not path:
-                    break
+    while queue:
+        branch = queue[-1]
 
-                queue.pop()
-                pathset.remove(path.pop())
-                continue
+        if not branch:
+            if not path:
+                break
 
-            node = branch.pop()
+            queue.pop()
+            pathset.remove(path.pop())
+            continue
 
-            if node in visited:
-                if node in pathset:
-                    yield path + [node]
-                continue
+        node = branch.pop()
 
-            queue.append(node.parents if backward else node.children)
-            path.append(node)
-            pathset.add(node)
-            visited.add(node)
+        if node in visited:
+            if node in pathset:
+                yield path + [node]
+            continue
+
+        queue.append(node.parents if backward else node.children)
+        path.append(node)
+        pathset.add(node)
+        visited.add(node)
 
 
 class Job(Node):
@@ -97,6 +98,8 @@ class Job(Node):
         f: Callable,
         name: str = None,
         array: Union[int, Set[int], range] = None,
+        env: List[str] = [],
+        settings: Dict[str, Any] = {},
         **kwargs,
     ):
         super().__init__(f.__name__ if name is None else name)
@@ -107,13 +110,11 @@ class Job(Node):
             array = range(array)
         self.array = array
 
+        # Environment
+        self.env = env
+
         # Settings
-        self.settings = {
-            'cpus': 1,
-            'gpus': 0,
-            'ram': '2GB',
-            'time': '1-00:00:00',
-        }
+        self.settings = settings.copy()
         self.settings.update(kwargs)
 
         # Dependencies
@@ -121,14 +122,10 @@ class Job(Node):
 
         # Postcondition
         self.postcondition = None
-        self.pruned = False
 
     @property
     def fn(self) -> Callable:
         name, f, post = self.name, self.f, self.postcondition
-
-        if self.done:
-            f = lambda *args: None
 
         def call(*args) -> Any:
             result = f(*args)
@@ -166,6 +163,10 @@ class Job(Node):
         for dep in deps:
             self.add_parent(dep, status)
 
+    def detach(self, *deps) -> None:
+        for dep in deps:
+            self.rm_parent(dep)
+
     @property
     def waitfor(self) -> str:
         return self._waitfor
@@ -189,31 +190,32 @@ class Job(Node):
 
         return False
 
-    def prune(self) -> None:
-        if self.pruned:
-            return
-        self.pruned = True
 
-        done = {
-            dep for dep, status in self.dependencies.items()
-            if status == 'success' and dep.done
-        }
-
-        if self.waitfor == 'any' and done:
-            for dep in self.dependencies:
-                self.rm_parent(dep)
-        elif self.waitfor == 'all':
-            for dep in done:
-                self.rm_parent(dep)
-
-        for dep in self.dependencies:
-            dep.prune()
-
-        if self.array is not None and self.postcondition is not None:
+def prune(*jobs) -> List[Job]:
+    for job in dfs(*jobs, backward=True):
+        if job.done:
+            job.fn = lambda *_: None
+            job.detach(*job.dependencies)
+        elif job.array is not None and job.postcondition is not None:
             pending = {
-                i for i in self.array
-                if not self.postcondition(i)
+                i for i in job.array
+                if not job.postcondition(i)
             }
 
-            if len(pending) < len(self.array):
-                self.array = pending
+            if len(pending) < len(job.array):
+                job.array = pending
+
+        done = {
+            dep for dep, status in job.dependencies.items()
+            if dep.done and status != 'failure'
+        }
+
+        if job.waitfor == 'any' and done:
+            job.detach(*job.dependencies)
+        elif job.waitfor == 'all':
+            job.detach(*done)
+
+    return [
+        job for job in jobs
+        if not job.done
+    ]
