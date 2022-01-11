@@ -7,7 +7,7 @@ to run the workflows on HPC clusters without the need to specify
 those annoying submission scripts.
 """
 
-__version__ = '0.1.8'
+__version__ = '0.1.6'
 
 
 from functools import partial
