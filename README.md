@@ -25,6 +25,7 @@ finished[42] = False
 @after(a, b)
 @waitfor('any')
 @ensure(lambda i: finished[i])
+@ensure(lambda i: True)
 @job(name='C', array=100)
 def c(i: int):
     print(f'c{i}')

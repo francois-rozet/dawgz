@@ -1,6 +1,6 @@
 r"""Directed Acyclic Workflow Graph Scheduling"""
 
-__version__ = '0.1.4'
+__version__ = '0.1.5'
 
 
 from functools import partial
