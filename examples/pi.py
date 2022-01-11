@@ -24,7 +24,7 @@ def estimate(i):
 @after(estimate)
 @ensure(lambda: os.path.exists('pi.npy'))
 @ensure(lambda: 2 + 2 == 2 + 2)  # You can add multiple postconditions!
-@job(cpus='4', name='merge_and_show')  # Ability to overwrite job name
+@job(name='merge_and_show', cpus='4')  # Ability to overwrite job name
 def merge():
     files = glob.glob('pi-*.npy')
     stack = np.vstack([np.load(f) for f in files])
