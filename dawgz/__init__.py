@@ -1,6 +1,6 @@
 r"""Directed Acyclic Workflow Graph Scheduling"""
 
-__version__ = '0.1.6'
+__version__ = '0.1.7'
 
 
 from functools import partial
@@ -33,9 +33,9 @@ def waitfor(mode: str) -> Callable:
     return decorator
 
 
-def ensure(condition: Callable) -> Callable:
+def ensure(condition: Callable, when: str = 'after') -> Callable:
     def decorator(self: Job) -> Job:
-        self.ensure(condition)
+        self.ensure(condition, when)
         return self
 
     return decorator

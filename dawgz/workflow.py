@@ -81,7 +81,8 @@ class Job(Node):
         # Dependencies
         self._waitfor = 'all'
 
-        # Postconditions
+        # Conditions
+        self.preconditions = []
         self.postconditions = []
 
         # Skip
@@ -89,13 +90,15 @@ class Job(Node):
 
     @property
     def fn(self) -> Callable:
-        name, f, post = self.name, self.f, self.postcondition
+        name, f = self.name, self.f
+
+        pre = self.reduce(self.preconditions)
+        post = self.reduce(self.postconditions)
 
         def call(*args) -> Any:
+            assert pre(*args), f'job {name} does not satisfy its preconditions'
             result = f(*args)
-
-            if post is not None:
-                assert post(*args), f'job {name} does not satisfy its postconditions'
+            assert post(*args), f'job {name} does not satisfy its postconditions'
 
             return result
 
@@ -141,42 +144,38 @@ class Job(Node):
 
         self._waitfor = mode
 
-    def ensure(self, condition: Callable) -> None:
+    def ensure(self, condition: Callable, when: str = 'after') -> None:
+        assert when in ['before', 'after']
+
         if self.array is None:
             assert accepts(condition), 'postcondition should not expect arguments'
         else:
             assert accepts(condition, 0), 'postcondition should expect one argument'
 
-        self.postconditions.append(condition)
+        if when == 'before':
+            self.preconditions.append(condition)
+        else:  # when == 'after'
+            self.postconditions.append(condition)
 
-    @property
-    def postcondition(self) -> Callable:
-        conditions = self.postconditions
-
-        if not conditions:
-            return None
-
+    def reduce(self, conditions: List[Callable]) -> Callable:
         if self.array is None:
-            def post() -> bool:
-                return all(c() for c in conditions)
+            return lambda: all(c() for c in conditions)
         else:
-            def post(i: int) -> bool:
-                return all(c(i) for c in conditions)
-
-        return post
+            return lambda i: all(c(i) for c in conditions)
 
     @lru_cache(None)
     def done(self, i: int = None) -> bool:
-        post = self.postcondition
-
-        if post is None:
+        if not self.postconditions:
             return False
-        elif self.array is None:
-            return post()
+
+        condition = self.reduce(self.postconditions)
+
+        if self.array is None:
+            return condition()
         elif i is None:
-            return all(map(post, self.array))
+            return all(map(condition, self.array))
         else:
-            return post(i)
+            return condition(i)
 
 
 def dfs(*nodes, backward: bool = False) -> Iterator[Node]:
