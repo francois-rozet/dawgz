@@ -157,7 +157,7 @@ dmypy.json
 cython_debug/
 
 # NumPy
-.npy
+*.npy
 
 # Pickle
-.pkl
+*.pkl
