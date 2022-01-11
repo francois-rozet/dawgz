@@ -100,7 +100,7 @@ class LocalScheduler(Scheduler):
 
         # Execute job
         try:
-            if job.skip:
+            if job.empty:
                 return None
             elif job.array is None:
                 return await to_thread(job.fn)
@@ -187,7 +187,7 @@ class SlurmScheduler(Scheduler):
             f'#SBATCH --job-name={job.name}',
         ]
 
-        if job.array is None:
+        if job.array is None or job.empty:
             logfile = self.path / f'{self.id(job)}_%j.log'
         else:
             array = job.array
@@ -205,7 +205,7 @@ class SlurmScheduler(Scheduler):
         settings = self.settings.copy()
         settings.update(job.settings)
 
-        if job.skip:
+        if job.empty:
             settings.update(self.minimal)
 
         for key, value in settings.items():
@@ -243,7 +243,7 @@ class SlurmScheduler(Scheduler):
             '',
         ])
 
-        if not job.skip:
+        if not job.empty:
             ## Environment
             if job.env:
                 lines.extend([*job.env, ''])

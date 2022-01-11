@@ -1,6 +1,6 @@
 r"""Directed Acyclic Workflow Graph Scheduling"""
 
-__version__ = '0.1.7'
+__version__ = '0.1.8'
 
 
 from functools import partial
@@ -41,6 +41,6 @@ def ensure(condition: Callable, when: str = 'after') -> Callable:
     return decorator
 
 
-def skip(self: Job) -> Job:
-    self.skip = True
+def empty(self: Job) -> Job:
+    self.f = None
     return self

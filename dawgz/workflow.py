@@ -85,12 +85,16 @@ class Job(Node):
         self.preconditions = []
         self.postconditions = []
 
-        # Skip
-        self.skip = False
+    @property
+    def empty(self) -> bool:
+        return self.f is None or (self.array is not None and len(self.array) == 0)
 
     @property
     def fn(self) -> Callable:
         name, f = self.name, self.f
+
+        if f is None:
+            f = lambda *_: None
 
         pre = self.reduce(self.preconditions)
         post = self.reduce(self.postconditions)
@@ -241,7 +245,7 @@ def cycles(*nodes, backward: bool = False) -> Iterator[List[Node]]:
 def prune(*jobs) -> List[Job]:
     for job in dfs(*jobs, backward=True):
         if job.done():
-            job.skip = True
+            job.f = None
             job.detach(*job.dependencies)
         elif job.array is not None:
             pending = {
