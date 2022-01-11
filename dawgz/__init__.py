@@ -1,11 +1,4 @@
-r"""Directed Acyclic Workflow Graph Scheduling
-
-The dawgz package contains modules and data structures to represent
-and execute directed acyclic workflows. The workflows can be run on
-your laptop, or when requested, code will be specifically generated
-to run the workflows on HPC clusters without the need to specify
-those annoying submission scripts.
-"""
+r"""Directed Acyclic Workflow Graph Scheduling"""
 
 __version__ = '0.1.6'
 
