@@ -1,8 +1,9 @@
 r"""Workflow graph components"""
 
 from functools import lru_cache
-from inspect import signature
 from typing import Any, Callable, Dict, Iterator, List, Set, Tuple, Union
+
+from .utils import accepts
 
 
 class SignatureException(Exception):
@@ -66,13 +67,10 @@ class Job(Node):
         if type(array) is int:
             array = range(array)
 
-        try:
-            if array is None:
-                signature(f).bind()
-            else:
-                signature(f).bind(0)
-        except TypeError as e:
-            raise SignatureException(str(e)) from None
+        if array is None:
+            assert accepts(f), 'job should not expect arguments'
+        else:
+            assert accepts(f, 0), 'job array should expect one argument'
 
         self.f = f
         self.array = array
@@ -145,13 +143,10 @@ class Job(Node):
         self._waitfor = mode
 
     def ensure(self, condition: Callable) -> None:
-        try:
-            if self.array is None:
-                signature(condition).bind()
-            else:
-                signature(condition).bind(0)
-        except TypeError as e:
-            raise SignatureException(str(e)) from None
+        if self.array is None:
+            assert accepts(condition), 'postcondition should not expect arguments'
+        else:
+            assert accepts(condition, 0), 'postcondition should expect one argument'
 
         self.postconditions.append(condition)
 
