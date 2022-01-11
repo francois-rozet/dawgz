@@ -1,5 +1,4 @@
 import argparse
-import awflow
 import glob
 import sys
 import numpy as np
