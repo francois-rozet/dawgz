@@ -14,7 +14,7 @@ from functools import partial
 from typing import Callable, Union
 
 from .schedulers import schedule
-from .workflow import Job, leafs
+from .workflow import Job, leafs, roots
 
 
 def job(f: Callable = None, /, **kwargs) -> Union[Callable, Job]:
