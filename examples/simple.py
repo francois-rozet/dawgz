@@ -1,6 +1,6 @@
 import time
 
-from dawgz import job, after, waitfor, ensure, schedule, leafs
+from dawgz import job, after, waitfor, require, ensure, schedule
 
 
 @job
@@ -33,7 +33,7 @@ def c(i: int):
     finished[i] = True
 
 @after(b, c)
-@ensure(lambda: all(finished), when='before')  # Check precondition at runtime
+@require(lambda: all(finished))  # Check precondition at runtime
 @job
 def d():
     print('d')
@@ -45,7 +45,4 @@ def d():
 def e():
     print('e')
 
-jobs = leafs(a)  # Search for terminal nodes of `a` and prune automatically
-print(jobs)  # prints {d, e}
-
-schedule(*jobs, backend='local')  # prints a a c42 d e d (e is executed concurrently by asyncio)
+schedule(d, e, backend='local')  # prints a a c42 d e d (e is executed concurrently by asyncio)

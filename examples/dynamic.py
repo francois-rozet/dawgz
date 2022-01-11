@@ -27,5 +27,5 @@ def do_experiment(parameter):
 for parameter in [0.1, 0.2, 0.3, 0.4, 0.5]:
     do_experiment(parameter)
 
-jobs = leafs(generate)  # Find terminal nodes of workflow graph
+jobs = leafs(generate)  # Find all terminal nodes of workflow graph
 schedule(*jobs, backend='local')

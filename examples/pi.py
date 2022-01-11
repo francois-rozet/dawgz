@@ -1,18 +1,9 @@
-import argparse
 import glob
 import sys
 import numpy as np
 import os
 
-from dawgz import after, ensure, job, schedule, leafs
-
-
-
-# Prepare argument parser
-parser = argparse.ArgumentParser('dawgz π demo.')
-parser.add_argument('--backend', type=str, default='local', help='Compute backend (default: local).')
-parser.add_argument('--partition', type=str, default=None, help='Partition to deploy the jobs on and can only be specified through the Slurm backend (default: none).')
-arguments, _ = parser.parse_known_args()
+from dawgz import after, ensure, job, schedule
 
 
 ## BEGIN Workflow definition ###################################################
@@ -32,8 +23,7 @@ def estimate(i):
 
 @after(estimate)
 @ensure(lambda: os.path.exists('pi.npy'))
-@ensure(lambda: True)  # You can add multiple postconditions!
-@ensure(lambda: os.path.exists('test.npy'), when='before')
+@ensure(lambda: 2 + 2 == 2 + 2)  # You can add multiple postconditions!
 @job(cpus='4', name='merge_and_show')  # Ability to overwrite job name
 def merge():
     files = glob.glob('pi-*.npy')
@@ -42,14 +32,5 @@ def merge():
     print('π ≅', pi_estimate)
     np.save('pi.npy', pi_estimate)
 
-r"""Find the terminal nodes of the specified root node (estimate)
-and prune the jobs from the workflow whose postconditions
-have been satisfied.
-"""
-jobs = leafs(estimate)
-print(jobs)  # prints merge_and_show
-
-# Schedule the jobs for execution
-schedule(*jobs, backend=arguments.backend)
-if arguments.backend == 'slurm':
-    print('Jobs have been submitted!')
+# Schedule merge and its dependencies for execution
+schedule(merge, backend='local')
