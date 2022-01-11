@@ -37,9 +37,9 @@ def after(*deps, status: str = 'success') -> Callable:
     return decorator
 
 
-def ensure(condition: Callable) -> Callable:
+def ensure(condition: Callable, when : str = 'after') -> Callable:
     def decorator(self: Job) -> Job:
-        self.ensure(condition)
+        self.ensure(condition, when)
         return self
 
     return decorator

@@ -85,14 +85,18 @@ class Job(Node):
         # Dependencies
         self._waitfor = 'all'
 
-        # Postconditions
+        # Conditions
+        self.preconditions = []
         self.postconditions = []
 
     @property
     def fn(self) -> Callable:
-        name, f, post = self.name, self.f, self.postcondition
+        name, f, pre, post = self.name, self.f, self.precondition, self.postcondition
 
         def call(*args) -> Any:
+            if pre is not None:
+                assert pre(*args), f'job {name} does not satisfy its preconditions'
+
             result = f(*args)
 
             if post is not None:
@@ -142,29 +146,39 @@ class Job(Node):
 
         self._waitfor = mode
 
-    def ensure(self, condition: Callable) -> None:
+    def ensure(self, condition: Callable, when: str = 'after') -> None:
+        assert when in ['after', 'before']
+
         if self.array is None:
             assert accepts(condition), 'postcondition should not expect arguments'
         else:
             assert accepts(condition, 0), 'postcondition should expect one argument'
 
-        self.postconditions.append(condition)
+        if when == 'after':  # Postcondition
+            self.postconditions.append(condition)
+        elif when == 'before':  # Precondition
+            self.preconditions.append(condition)
 
-    @property
-    def postcondition(self) -> Callable:
-        conditions = self.postconditions
-
+    def _checker(self, conditions) -> Callable:
         if not conditions:
             return None
 
         if self.array is None:
-            def post() -> bool:
+            def checker() -> bool:
                 return all(c() for c in conditions)
         else:
-            def post(i: int) -> bool:
+            def checker(i: int) -> bool:
                 return all(c(i) for c in conditions)
 
-        return post
+        return checker
+
+    @property
+    def precondition(self) -> Callable:
+        return self._checker(self.preconditions)
+
+    @property
+    def postcondition(self) -> Callable:
+        return self._checker(self.postconditions)
 
     @lru_cache(None)
     def done(self, i: int = None) -> bool:

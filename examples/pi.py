@@ -33,6 +33,7 @@ def estimate(i):
 @after(estimate)
 @ensure(lambda: os.path.exists('pi.npy'))
 @ensure(lambda: True)  # You can add multiple postconditions!
+@ensure(lambda: os.path.exists('test.npy'), when='before')
 @job(cpus='4', name='merge_and_show')  # Ability to overwrite job name
 def merge():
     files = glob.glob('pi-*.npy')

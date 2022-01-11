@@ -33,6 +33,7 @@ def c(i: int):
     finished[i] = True
 
 @after(b, c)
+@ensure(lambda: all(finished), when='before')  # Check precondition at runtime
 @job
 def d():
     print('d')
