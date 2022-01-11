@@ -13,7 +13,7 @@ setuptools.setup(
     name='dawgz',
     version=dawgz.__version__,
     description='Directed Acyclic Workflow Graph Scheduling',
-    keywords='workflow-engine hpc slurm hpc-tools reproducible-science acyclic workflow graph scheduling',
+    keywords='acyclic workflow graph scheduling reproducible-science slurm hpc hpc-tools',
     long_description=readme,
     long_description_content_type='text/markdown',
     author='François Rozet, Joeri Hermans, Arnaud Delaunoy',
@@ -29,6 +29,7 @@ setuptools.setup(
     },
     classifiers=[
         'Intended Audience :: Developers',
+        'Intended Audience :: Science/Research',
         'License :: OSI Approved :: MIT License',
         'Natural Language :: English',
         'Operating System :: OS Independent',
