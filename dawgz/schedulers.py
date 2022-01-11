@@ -17,7 +17,7 @@ from .workflow import Job, cycles, prune as _prune
 
 def schedule(
     *jobs,
-    backend: str = None,
+    backend: str,
     prune: bool = True,
     **kwargs,
 ) -> List[Any]:
@@ -30,7 +30,7 @@ def schedule(
     scheduler = {
         'local': LocalScheduler,
         'slurm': SlurmScheduler,
-    }.get(backend, LocalScheduler)(**kwargs)
+    }.get(backend)(**kwargs)
 
     return asyncio.run(scheduler.gather(*jobs))
 
