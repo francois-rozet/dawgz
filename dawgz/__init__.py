@@ -7,26 +7,21 @@ to run the workflows on HPC clusters without the need to specify
 those annoying submission scripts.
 """
 
+__version__ = '0.1.8'
 
-__version__ = '0.1.6'
-
-
-## Verify module prerequisites #################################################
-
-import sys
-
-
-if sys.version_info < (3,):
-    raise Exception('Python 2 had reached end-of-life and is not supported.')
-
-
-## Decorator definitions #######################################################
 
 from functools import partial
 from typing import Callable, Union
 
 from .schedulers import schedule
-from .workflow import Job
+from .workflow import Job, leafs
+
+
+def job(f: Callable = None, /, **kwargs) -> Union[Callable, Job]:
+    if f is None:
+        return partial(job, **kwargs)
+    else:
+        return Job(f, **kwargs)
 
 
 def after(*deps, status: str = 'success') -> Callable:
@@ -37,21 +32,6 @@ def after(*deps, status: str = 'success') -> Callable:
     return decorator
 
 
-def ensure(condition: Callable, when : str = 'after') -> Callable:
-    def decorator(self: Job) -> Job:
-        self.ensure(condition, when)
-        return self
-
-    return decorator
-
-
-def job(f: Callable = None, /, **kwargs) -> Union[Callable, Job]:
-    if f is None:
-        return partial(job, **kwargs)
-    else:
-        return Job(f, **kwargs)
-
-
 def waitfor(mode: str) -> Callable:
     def decorator(self: Job) -> Job:
         self.waitfor = mode
@@ -60,6 +40,14 @@ def waitfor(mode: str) -> Callable:
     return decorator
 
 
-## Utilities ###################################################################
+def ensure(condition: Callable, when: str = 'after') -> Callable:
+    def decorator(self: Job) -> Job:
+        self.ensure(condition, when)
+        return self
 
-from .workflow import leafs
+    return decorator
+
+
+def empty(self: Job) -> Job:
+    self.f = None
+    return self

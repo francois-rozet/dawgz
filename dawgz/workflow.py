@@ -6,10 +6,6 @@ from typing import Any, Callable, Dict, Iterator, List, Set, Tuple, Union
 from .utils import accepts
 
 
-class SignatureException(Exception):
-    pass
-
-
 class Node(object):
     r"""Abstract graph node"""
 
@@ -90,17 +86,23 @@ class Job(Node):
         self.postconditions = []
 
     @property
+    def empty(self) -> bool:
+        return self.f is None or (self.array is not None and len(self.array) == 0)
+
+    @property
     def fn(self) -> Callable:
-        name, f, pre, post = self.name, self.f, self.precondition, self.postcondition
+        name, f = self.name, self.f
+
+        if f is None:
+            f = lambda *_: None
+
+        pre = self.reduce(self.preconditions)
+        post = self.reduce(self.postconditions)
 
         def call(*args) -> Any:
-            if pre is not None:
-                assert pre(*args), f'job {name} does not satisfy its preconditions'
-
+            assert pre(*args), f'job {name} does not satisfy its preconditions'
             result = f(*args)
-
-            if post is not None:
-                assert post(*args), f'job {name} does not satisfy its postconditions'
+            assert post(*args), f'job {name} does not satisfy its postconditions'
 
             return result
 
@@ -147,51 +149,37 @@ class Job(Node):
         self._waitfor = mode
 
     def ensure(self, condition: Callable, when: str = 'after') -> None:
-        assert when in ['after', 'before']
+        assert when in ['before', 'after']
 
         if self.array is None:
             assert accepts(condition), 'postcondition should not expect arguments'
         else:
             assert accepts(condition, 0), 'postcondition should expect one argument'
 
-        if when == 'after':  # Postcondition
-            self.postconditions.append(condition)
-        elif when == 'before':  # Precondition
+        if when == 'before':
             self.preconditions.append(condition)
+        else:  # when == 'after'
+            self.postconditions.append(condition)
 
-    def _checker(self, conditions) -> Callable:
-        if not conditions:
-            return None
-
+    def reduce(self, conditions: List[Callable]) -> Callable:
         if self.array is None:
-            def checker() -> bool:
-                return all(c() for c in conditions)
+            return lambda: all(c() for c in conditions)
         else:
-            def checker(i: int) -> bool:
-                return all(c(i) for c in conditions)
-
-        return checker
-
-    @property
-    def precondition(self) -> Callable:
-        return self._checker(self.preconditions)
-
-    @property
-    def postcondition(self) -> Callable:
-        return self._checker(self.postconditions)
+            return lambda i: all(c(i) for c in conditions)
 
     @lru_cache(None)
     def done(self, i: int = None) -> bool:
-        post = self.postcondition
-
-        if post is None:
+        if not self.postconditions:
             return False
-        elif self.array is None:
-            return post()
+
+        condition = self.reduce(self.postconditions)
+
+        if self.array is None:
+            return condition()
         elif i is None:
-            return all(map(post, self.array))
+            return all(map(condition, self.array))
         else:
-            return post(i)
+            return condition(i)
 
 
 def dfs(*nodes, backward: bool = False) -> Iterator[Node]:
@@ -208,6 +196,20 @@ def dfs(*nodes, backward: bool = False) -> Iterator[Node]:
 
         queue.extend(node.parents if backward else node.children)
         visited.add(node)
+
+
+def leafs(*nodes) -> Set[Node]:
+    return {
+        node for node in dfs(*nodes, backward=False)
+        if not node.children
+    }
+
+
+def roots(*nodes) -> Set[Node]:
+    return {
+        node for node in dfs(*nodes, backward=True)
+        if not node.parents
+    }
 
 
 def cycles(*nodes, backward: bool = False) -> Iterator[List[Node]]:
@@ -243,6 +245,7 @@ def cycles(*nodes, backward: bool = False) -> Iterator[List[Node]]:
 def prune(*jobs) -> List[Job]:
     for job in dfs(*jobs, backward=True):
         if job.done():
+            job.f = None
             job.detach(*job.dependencies)
         elif job.array is not None:
             pending = {
@@ -267,22 +270,3 @@ def prune(*jobs) -> List[Job]:
         job for job in jobs
         if not job.done()
     ]
-
-
-def leafs(*roots) -> Set[Job]:
-    def search(job: Job) -> Set[Node]:
-        if len(job.children) == 0:
-            jobs = {job}
-        else:
-            jobs = set()
-            for child in job.children:
-                jobs.update(search(child))
-
-        return jobs
-
-    jobs = set()
-
-    for root in roots:
-        jobs.update(search(root))
-
-    return jobs
