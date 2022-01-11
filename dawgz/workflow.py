@@ -148,18 +148,21 @@ class Job(Node):
 
         self._waitfor = mode
 
-    def ensure(self, condition: Callable, when: str = 'after') -> None:
-        assert when in ['before', 'after']
-
+    def ensure(self, condition: Callable) -> None:
         if self.array is None:
             assert accepts(condition), 'postcondition should not expect arguments'
         else:
             assert accepts(condition, 0), 'postcondition should expect one argument'
 
-        if when == 'before':
-            self.preconditions.append(condition)
-        else:  # when == 'after'
-            self.postconditions.append(condition)
+        self.postconditions.append(condition)
+
+    def require(self, condition: Callable) -> None:
+        if self.array is None:
+            assert accepts(condition), 'precondition should not expect arguments'
+        else:
+            assert accepts(condition, 0), 'precondition should expect one argument'
+
+        self.preconditions.append(condition)
 
     def reduce(self, conditions: List[Callable]) -> Callable:
         if self.array is None:
