@@ -150,6 +150,8 @@ class SlurmScheduler(Scheduler):
             'cpus': 'cpus-per-task',
             'gpus': 'gpus-per-task',
             'ram': 'mem',
+            'memory': 'mem',
+            'time': 'time',
             'timelimit': 'time',
         }
 
