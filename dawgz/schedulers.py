@@ -100,6 +100,8 @@ class LocalScheduler(Scheduler):
                     to_thread(job.fn, i)
                     for i in job.array
                 ))
+        except AssertionError as error:
+            raise error
         except Exception as error:
             return error
 
