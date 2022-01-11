@@ -12,7 +12,8 @@ from subprocess import run
 from typing import Any, Dict, List
 
 from .utils import to_thread
-from .workflow import Job, cycles, prune
+from .workflow import Job, cycles
+from .workflow import prune as prune_jobs
 
 
 class CyclicDependencyGraphError(Exception):
@@ -25,26 +26,6 @@ class DependencyNeverSatisfiedException(Exception):
 
 class JobNotFailedException(Exception):
     pass
-
-
-def schedule(
-    *jobs,
-    backend: str = None,
-    pruning: bool = True,
-    **kwargs,
-) -> List[Any]:
-    for cycle in cycles(*jobs, backward=True):
-        raise CyclicDependencyGraphError(' <- '.join(map(str, cycle)))
-
-    if pruning:
-        jobs = prune(*jobs)
-
-    scheduler = {
-        'local': LocalScheduler,
-        'slurm': SlurmScheduler,
-    }.get(backend, LocalScheduler)(**kwargs)
-
-    return asyncio.run(scheduler.gather(*jobs))
 
 
 class Scheduler(ABC):
@@ -273,3 +254,23 @@ class SlurmScheduler(Scheduler):
 
         for jobid in text.splitlines():
             return jobid
+
+
+def schedule(
+    *jobs,
+    backend: str = None,
+    prune: bool = True,
+    **kwargs,
+) -> List[Any]:
+    for cycle in cycles(*jobs, backward=True):
+        raise CyclicDependencyGraphError(' <- '.join(map(str, cycle)))
+
+    if prune:
+        jobs = prune_jobs(*jobs)
+
+    scheduler = {
+        'local': LocalScheduler,
+        'slurm': SlurmScheduler,
+    }.get(backend, LocalScheduler)(**kwargs)
+
+    return asyncio.run(scheduler.gather(*jobs))
