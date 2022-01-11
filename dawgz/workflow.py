@@ -46,52 +46,6 @@ class Node(object):
         return list(self._parents)
 
 
-def dfs(*nodes, backward: bool = False) -> Iterator[Node]:
-    queue = list(nodes)
-    visited = set()
-
-    while queue:
-        node = queue.pop()
-
-        if node in visited:
-            continue
-        else:
-            yield node
-
-        queue.extend(node.parents if backward else node.children)
-        visited.add(node)
-
-
-def cycles(*nodes, backward: bool = False) -> Iterator[List[Node]]:
-    queue = [list(nodes)]
-    path = []
-    pathset = set()
-    visited = set()
-
-    while queue:
-        branch = queue[-1]
-
-        if not branch:
-            if not path:
-                break
-
-            queue.pop()
-            pathset.remove(path.pop())
-            continue
-
-        node = branch.pop()
-
-        if node in visited:
-            if node in pathset:
-                yield path + [node]
-            continue
-
-        queue.append(node.parents if backward else node.children)
-        path.append(node)
-        pathset.add(node)
-        visited.add(node)
-
-
 class Job(Node):
     r"""Job node"""
 
@@ -223,6 +177,66 @@ class Job(Node):
             return all(map(post, self.array))
         else:
             return post(i)
+
+
+def dfs(*nodes, backward: bool = False) -> Iterator[Node]:
+    queue = list(nodes)
+    visited = set()
+
+    while queue:
+        node = queue.pop()
+
+        if node in visited:
+            continue
+        else:
+            yield node
+
+        queue.extend(node.parents if backward else node.children)
+        visited.add(node)
+
+
+def leafs(*nodes) -> Set[Node]:
+    return {
+        node for node in dfs(*nodes, backward=False)
+        if not node.children
+    }
+
+
+def roots(*nodes) -> Set[Node]:
+    return {
+        node for node in dfs(*nodes, backward=True)
+        if not node.parents
+    }
+
+
+def cycles(*nodes, backward: bool = False) -> Iterator[List[Node]]:
+    queue = [list(nodes)]
+    path = []
+    pathset = set()
+    visited = set()
+
+    while queue:
+        branch = queue[-1]
+
+        if not branch:
+            if not path:
+                break
+
+            queue.pop()
+            pathset.remove(path.pop())
+            continue
+
+        node = branch.pop()
+
+        if node in visited:
+            if node in pathset:
+                yield path + [node]
+            continue
+
+        queue.append(node.parents if backward else node.children)
+        path.append(node)
+        pathset.add(node)
+        visited.add(node)
 
 
 def prune(*jobs) -> List[Job]:

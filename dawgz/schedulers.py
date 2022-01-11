@@ -12,20 +12,20 @@ from subprocess import run
 from typing import Any, Dict, List
 
 from .utils import to_thread
-from .workflow import Job, cycles, prune
+from .workflow import Job, cycles, prune as _prune
 
 
 def schedule(
     *jobs,
     backend: str = None,
-    pruning: bool = True,
+    prune: bool = True,
     **kwargs,
 ) -> List[Any]:
     for cycle in cycles(*jobs, backward=True):
         raise CyclicDependencyGraphError(' <- '.join(map(str, cycle)))
 
-    if pruning:
-        jobs = prune(*jobs)
+    if prune:
+        jobs = _prune(*jobs)
 
     scheduler = {
         'local': LocalScheduler,
@@ -33,10 +33,6 @@ def schedule(
     }.get(backend, LocalScheduler)(**kwargs)
 
     return asyncio.run(scheduler.gather(*jobs))
-
-
-class CyclicDependencyGraphError(Exception):
-    pass
 
 
 class Scheduler(ABC):
@@ -117,14 +113,6 @@ class LocalScheduler(Scheduler):
             return error
 
 
-class DependencyNeverSatisfiedException(Exception):
-    pass
-
-
-class JobNotFailedException(Exception):
-    pass
-
-
 class SlurmScheduler(Scheduler):
     r"""Slurm scheduler"""
 
@@ -132,7 +120,7 @@ class SlurmScheduler(Scheduler):
         self,
         name: str = None,
         path: str = '.dawgz',
-        shell: str = '/bin/bash',
+        shell: str = None,
         env: List[str] = [],  # cd, virtualenv, conda, etc.
         settings: Dict[str, Any] = {},
         **kwargs,
@@ -151,7 +139,7 @@ class SlurmScheduler(Scheduler):
         self.path = path.resolve()
 
         # Environment
-        self.shell = shell
+        self.shell = os.environ['SHELL'] if shell is None else shell
         self.env = env
 
         # Settings
@@ -200,7 +188,7 @@ class SlurmScheduler(Scheduler):
         ]
 
         if job.array is None:
-            logfile = self.path / f'{self.id(job)}.log'
+            logfile = self.path / f'{self.id(job)}_%j.log'
         else:
             array = job.array
 
@@ -209,7 +197,7 @@ class SlurmScheduler(Scheduler):
             else:
                 lines.append('#SBATCH --array=' + ','.join(map(str, array)))
 
-            logfile = self.path / f'{self.id(job)}_%a.log'
+            logfile = self.path / f'{self.id(job)}_%j_%a.log'
 
         lines.extend([f'#SBATCH --output={logfile}', '#'])
 
@@ -228,6 +216,9 @@ class SlurmScheduler(Scheduler):
             else:
                 lines.append(f'#SBATCH --{key}={value}')
 
+        if settings:
+            lines.append('#')
+
         ## Dependencies
         separator = '?' if job.waitfor == 'any' else ','
         keywords = {
@@ -242,11 +233,10 @@ class SlurmScheduler(Scheduler):
         ]
 
         if deps:
-            lines.extend(['#', '#SBATCH --dependency=' + separator.join(deps)])
+            lines.extend(['#SBATCH --dependency=' + separator.join(deps), '#'])
 
         ## Convenience
         lines.extend([
-            '#',
             '#SBATCH --export=ALL',
             '#SBATCH --parsable',
             '#SBATCH --requeue',
@@ -254,9 +244,6 @@ class SlurmScheduler(Scheduler):
         ])
 
         if not job.skip:
-            ## Exit at first error
-            lines.extend(['set -e', ''])
-
             ## Environment
             if job.env:
                 lines.extend([*job.env, ''])
@@ -282,6 +269,18 @@ class SlurmScheduler(Scheduler):
 
         # Submit job
         text = run(['sbatch', str(bashfile)], capture_output=True, check=True, text=True).stdout
+        jobid, *_ = text.splitlines()
 
-        for jobid in text.splitlines():
-            return jobid
+        return jobid
+
+
+class CyclicDependencyGraphError(Exception):
+    pass
+
+
+class DependencyNeverSatisfiedException(Exception):
+    pass
+
+
+class JobNotFailedException(Exception):
+    pass

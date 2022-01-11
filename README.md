@@ -3,7 +3,7 @@
 ```python
 import time
 
-from dawgz import job, after, waitfor, ensure, skip, schedule
+from dawgz import job, after, waitfor, ensure, schedule
 
 @job(name='A')
 def a():
@@ -31,19 +31,14 @@ def c(i: int):
     print(f'c{i}')
     finished[i] = True
 
-@skip
+@after(a, status='any')
+@after(b, c, status='success')
+@waitfor('all')
 @job(name='D')
 def d():
     print('d')
-
-@after(a, status='any')
-@after(b, c, d, status='success')
-@waitfor('all')
-@job(name='E')
-def e():
-    print('e')
     time.sleep(1)
-    print('e')
+    print('d')
 
-schedule(e, backend=None, pruning=True)  # prints a b b c42 a e e
+schedule(d, backend=None, prune=True)  # prints a b b c42 a d d
 ```
