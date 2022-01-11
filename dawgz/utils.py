@@ -4,18 +4,19 @@ import asyncio
 import contextvars
 
 from functools import partial
+from inspect import signature
 from typing import Any, Callable
 
 
-async def to_thread(func: Callable, /, *args, **kwargs) -> Any:
-    r"""Asynchronously run function `func` in a separate thread.
+async def to_thread(f: Callable, /, *args, **kwargs) -> Any:
+    r"""Asynchronously run function `f` in a separate thread.
 
     Any *args and **kwargs supplied for this function are directly passed
-    to `func`. Also, the current `contextvars.Context` is propagated,
+    to `f`. Also, the current `contextvars.Context` is propagated,
     allowing context variables from the main thread to be accessed in the
     separate thread.
 
-    Return a coroutine that can be awaited to get the eventual result of `func`.
+    Return a coroutine that can be awaited to get the eventual result of `f`.
 
     References:
         https://github.com/python/cpython/blob/main/Lib/asyncio/threads.py
@@ -23,6 +24,18 @@ async def to_thread(func: Callable, /, *args, **kwargs) -> Any:
 
     loop = asyncio.get_running_loop()
     ctx = contextvars.copy_context()
-    func_call = partial(ctx.run, func, *args, **kwargs)
+    func_call = partial(ctx.run, f, *args, **kwargs)
 
     return await loop.run_in_executor(None, func_call)
+
+
+def accepts(f: Callable, *args, **kwargs) -> bool:
+    r"""Checks whether function `f` accepts the supplied
+    *args and **kwargs without errors."""
+
+    try:
+        signature(f).bind(*args, **kwargs)
+    except TypeError as e:
+        return False
+    else:
+        return True

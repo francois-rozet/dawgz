@@ -1,7 +1,9 @@
 r"""Workflow graph components"""
 
-from functools import cached_property
+from functools import lru_cache
 from typing import Any, Callable, Dict, Iterator, List, Set, Tuple, Union
+
+from .utils import accepts
 
 
 class Node(object):
@@ -104,10 +106,15 @@ class Job(Node):
     ):
         super().__init__(f.__name__ if name is None else name)
 
-        self.f = f
-
         if type(array) is int:
             array = range(array)
+
+        if array is None:
+            assert accepts(f), 'job should not expect arguments'
+        else:
+            assert accepts(f, 0), 'job array should expect one argument'
+
+        self.f = f
         self.array = array
 
         # Environment
@@ -120,8 +127,8 @@ class Job(Node):
         # Dependencies
         self._waitfor = 'all'
 
-        # Postcondition
-        self.postcondition = None
+        # Postconditions
+        self.postconditions = []
 
         # Skip
         self.skip = False
@@ -134,7 +141,7 @@ class Job(Node):
             result = f(*args)
 
             if post is not None:
-                assert post(*args), f'job {name} does not satisfy its postcondition'
+                assert post(*args), f'job {name} does not satisfy its postconditions'
 
             return result
 
@@ -181,28 +188,52 @@ class Job(Node):
         self._waitfor = mode
 
     def ensure(self, condition: Callable) -> None:
-        self.postcondition = condition
+        if self.array is None:
+            assert accepts(condition), 'postcondition should not expect arguments'
+        else:
+            assert accepts(condition, 0), 'postcondition should expect one argument'
 
-    @cached_property
-    def done(self) -> bool:
-        if self.postcondition is not None:
-            if self.array is None:
-                return self.postcondition()
-            else:
-                return all(map(self.postcondition, self.array))
+        self.postconditions.append(condition)
 
-        return False
+    @property
+    def postcondition(self) -> Callable:
+        conditions = self.postconditions
+
+        if not conditions:
+            return None
+
+        if self.array is None:
+            def post() -> bool:
+                return all(c() for c in conditions)
+        else:
+            def post(i: int) -> bool:
+                return all(c(i) for c in conditions)
+
+        return post
+
+    @lru_cache(None)
+    def done(self, i: int = None) -> bool:
+        post = self.postcondition
+
+        if post is None:
+            return False
+        elif self.array is None:
+            return post()
+        elif i is None:
+            return all(map(post, self.array))
+        else:
+            return post(i)
 
 
 def prune(*jobs) -> List[Job]:
     for job in dfs(*jobs, backward=True):
-        if job.done:
+        if job.done():
             job.skip = True
             job.detach(*job.dependencies)
-        elif job.array is not None and job.postcondition is not None:
+        elif job.array is not None:
             pending = {
                 i for i in job.array
-                if not job.postcondition(i)
+                if not job.done(i)
             }
 
             if len(pending) < len(job.array):
@@ -210,7 +241,7 @@ def prune(*jobs) -> List[Job]:
 
         done = {
             dep for dep, status in job.dependencies.items()
-            if dep.done and status != 'failure'
+            if dep.done() and status != 'failure'
         }
 
         if job.waitfor == 'any' and done:
@@ -220,5 +251,5 @@ def prune(*jobs) -> List[Job]:
 
     return [
         job for job in jobs
-        if not job.done
+        if not job.done()
     ]
