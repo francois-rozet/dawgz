@@ -104,7 +104,9 @@ class LocalScheduler(Scheduler):
 
         # Execute job
         try:
-            if job.array is None:
+            if job.skip:
+                return None
+            elif job.array is None:
                 return await to_thread(job.fn)
             else:
                 return await asyncio.gather(*(
@@ -163,6 +165,13 @@ class SlurmScheduler(Scheduler):
             'timelimit': 'time',
         }
 
+        self.minimal = {
+            'cpus': 1,
+            'gpus': 0,
+            'ram': '2GB',
+            'timelimit': '15:00',
+        }
+
         # Identifier table
         self.table = {}
 
@@ -208,6 +217,9 @@ class SlurmScheduler(Scheduler):
         settings = self.settings.copy()
         settings.update(job.settings)
 
+        if job.skip:
+            settings.update(self.minimal)
+
         for key, value in settings.items():
             key = self.translate.get(key, key)
 
@@ -241,25 +253,26 @@ class SlurmScheduler(Scheduler):
             '',
         ])
 
-        ## Exit at first error
-        lines.extend(['set -e', ''])
+        if not job.skip:
+            ## Exit at first error
+            lines.extend(['set -e', ''])
 
-        ## Environment
-        if job.env:
-            lines.extend([*job.env, ''])
-        elif self.env:
-            lines.extend([*self.env, ''])
+            ## Environment
+            if job.env:
+                lines.extend([*job.env, ''])
+            elif self.env:
+                lines.extend([*self.env, ''])
 
-        ## Pickle function
-        pklfile = self.path / f'{self.id(job)}.pkl'
+            ## Pickle function
+            pklfile = self.path / f'{self.id(job)}.pkl'
 
-        with open(pklfile, 'wb') as f:
-            f.write(pkl.dumps(job.fn))
+            with open(pklfile, 'wb') as f:
+                f.write(pkl.dumps(job.fn))
 
-        args = '' if job.array is None else '$SLURM_ARRAY_TASK_ID'
-        unpickle = f'python -c "import pickle; pickle.load(open(r\'{pklfile}\', \'rb\'))({args})"'
+            args = '' if job.array is None else '$SLURM_ARRAY_TASK_ID'
+            unpickle = f'python -c "import pickle; pickle.load(open(r\'{pklfile}\', \'rb\'))({args})"'
 
-        lines.extend([unpickle, ''])
+            lines.extend([unpickle, ''])
 
         ## Save
         bashfile = self.path / f'{self.id(job)}.sh'

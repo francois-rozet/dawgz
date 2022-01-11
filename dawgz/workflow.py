@@ -123,6 +123,9 @@ class Job(Node):
         # Postcondition
         self.postcondition = None
 
+        # Skip
+        self.skip = False
+
     @property
     def fn(self) -> Callable:
         name, f, post = self.name, self.f, self.postcondition
@@ -194,7 +197,7 @@ class Job(Node):
 def prune(*jobs) -> List[Job]:
     for job in dfs(*jobs, backward=True):
         if job.done:
-            job.fn = lambda *_: None
+            job.skip = True
             job.detach(*job.dependencies)
         elif job.array is not None and job.postcondition is not None:
             pending = {
