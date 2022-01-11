@@ -60,8 +60,9 @@ class Job(Node):
     ):
         super().__init__(f.__name__ if name is None else name)
 
-        if type(array) is int:
-            array = range(array)
+        # Private property initialization
+        self._array = None
+        self._waitfor = 'all'  # Default dependency mode
 
         if array is None:
             assert accepts(f), 'job should not expect arguments'
@@ -78,23 +79,27 @@ class Job(Node):
         self.settings = settings.copy()
         self.settings.update(kwargs)
 
-        # Dependencies
-        self._waitfor = 'all'
-
         # Conditions
         self.preconditions = []
         self.postconditions = []
 
     @property
-    def empty(self) -> bool:
-        return self.f is None or (self.array is not None and len(self.array) == 0)
+    def array(self) -> Union[int, Set[int], range]:
+        return self._array
+
+    @array.setter
+    def array(self, value: Union[int, Set[int], range] = None) -> None:
+        if value is not None:
+            if type(value) is int:
+                value = range(value)
+            if len(value) == 0:
+                value = None
+
+        self._array = value
 
     @property
     def fn(self) -> Callable:
         name, f = self.name, self.f
-
-        if f is None:
-            f = lambda *_: None
 
         pre = self.reduce(self.preconditions)
         post = self.reduce(self.postconditions)
@@ -248,7 +253,6 @@ def cycles(*nodes, backward: bool = False) -> Iterator[List[Node]]:
 def prune(*jobs) -> List[Job]:
     for job in dfs(*jobs, backward=True):
         if job.done():
-            job.f = None
             job.detach(*job.dependencies)
         elif job.array is not None:
             pending = {

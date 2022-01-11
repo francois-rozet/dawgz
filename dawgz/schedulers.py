@@ -100,9 +100,7 @@ class LocalScheduler(Scheduler):
 
         # Execute job
         try:
-            if job.empty:
-                return None
-            elif job.array is None:
+            if job.array is None:
                 return await to_thread(job.fn)
             else:
                 return await asyncio.gather(*(
