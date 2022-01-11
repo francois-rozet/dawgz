@@ -33,16 +33,17 @@ def c(i: int):
     finished[i] = True
 
 @after(b, c)
-@require(lambda: all(finished))  # Check precondition at runtime
-@job
-def d():
-    print('d')
-    time.sleep(1)
-    print('d')
+@require(lambda: 1 >= 0)  # Check precondition at runtime
+@require(lambda i: i >= 0)  # Array jobs can have preconditions based on the array
+@job(array=3)
+def d(i):
+    print(f'd{i}')
 
 @after(c)
+@require(lambda: 1 == 1)  # Specifying an argument to a precondition that is not an array job will yield an AssertionError
 @job
 def e():
     print('e')
 
-schedule(d, e, backend='local')  # prints a a c42 d e d (e is executed concurrently by asyncio)
+returns = schedule(d, e, backend='local')  # prints a a c42 d0 d1 d2 (e is executed concurrently by asyncio)
+print(returns)

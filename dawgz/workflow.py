@@ -85,6 +85,31 @@ class Job(Node):
         self.preconditions = []
         self.postconditions = []
 
+    def _reduce_postconditions(self) -> Callable:
+        conditions = self.postconditions
+
+        if self.array is None:
+            return lambda: all(c() for c in conditions)
+        else:
+            return lambda i: all(c(i) for c in conditions)
+
+    def _reduce_preconditions(self) -> Callable:
+        conditions = self.preconditions
+        is_array = self.array is not None
+
+        def reducer(*args):
+            satisfied = True
+
+            for c in conditions:
+                if is_array and accepts(c, 0):
+                    satisfied &= c(*args)
+                else:
+                    satisfied &= c()
+
+            return satisfied
+
+        return reducer
+
     @property
     def empty(self) -> bool:
         return self.f is None or (self.array is not None and len(self.array) == 0)
@@ -96,8 +121,8 @@ class Job(Node):
         if f is None:
             f = lambda *_: None
 
-        pre = self.reduce(self.preconditions)
-        post = self.reduce(self.postconditions)
+        pre = self._reduce_preconditions()
+        post = self._reduce_postconditions()
 
         def call(*args) -> Any:
             assert pre(*args), f'job {name} does not satisfy its preconditions'
@@ -159,23 +184,15 @@ class Job(Node):
     def require(self, condition: Callable) -> None:
         if self.array is None:
             assert accepts(condition), 'precondition should not expect arguments'
-        else:
-            assert accepts(condition, 0), 'precondition should expect one argument'
 
         self.preconditions.append(condition)
-
-    def reduce(self, conditions: List[Callable]) -> Callable:
-        if self.array is None:
-            return lambda: all(c() for c in conditions)
-        else:
-            return lambda i: all(c(i) for c in conditions)
 
     @lru_cache(None)
     def done(self, i: int = None) -> bool:
         if not self.postconditions:
             return False
 
-        condition = self.reduce(self.postconditions)
+        condition = self._reduce_postconditions()
 
         if self.array is None:
             return condition()
