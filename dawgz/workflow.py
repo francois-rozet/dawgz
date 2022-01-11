@@ -92,8 +92,6 @@ class Job(Node):
         if value is not None:
             if type(value) is int:
                 value = range(value)
-            if len(value) == 0:
-                value = None
 
         self._array = value
 
@@ -186,7 +184,7 @@ class Job(Node):
             return condition()
         elif i is None:
             return all(map(condition, self.array))
-        else:
+        elif:
             return condition(i)
 
 

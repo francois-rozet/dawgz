@@ -151,13 +151,6 @@ class SlurmScheduler(Scheduler):
             'timelimit': 'time',
         }
 
-        self.minimal = {
-            'cpus': 1,
-            'gpus': 0,
-            'ram': '2GB',
-            'timelimit': '15:00',
-        }
-
         # Identifier table
         self.table = {}
 
@@ -185,7 +178,7 @@ class SlurmScheduler(Scheduler):
             f'#SBATCH --job-name={job.name}',
         ]
 
-        if job.array is None or job.empty:
+        if job.array is None:
             logfile = self.path / f'{self.id(job)}_%j.log'
         else:
             array = job.array
@@ -202,9 +195,6 @@ class SlurmScheduler(Scheduler):
         ## Settings
         settings = self.settings.copy()
         settings.update(job.settings)
-
-        if job.empty:
-            settings.update(self.minimal)
 
         for key, value in settings.items():
             key = self.translate.get(key, key)
@@ -241,23 +231,22 @@ class SlurmScheduler(Scheduler):
             '',
         ])
 
-        if not job.empty:
-            ## Environment
-            if job.env:
-                lines.extend([*job.env, ''])
-            elif self.env:
-                lines.extend([*self.env, ''])
+        ## Environment
+        if job.env:
+            lines.extend([*job.env, ''])
+        elif self.env:
+            lines.extend([*self.env, ''])
 
-            ## Pickle function
-            pklfile = self.path / f'{self.id(job)}.pkl'
+        ## Pickle function
+        pklfile = self.path / f'{self.id(job)}.pkl'
 
-            with open(pklfile, 'wb') as f:
-                f.write(pkl.dumps(job.fn))
+        with open(pklfile, 'wb') as f:
+            f.write(pkl.dumps(job.fn))
 
-            args = '' if job.array is None else '$SLURM_ARRAY_TASK_ID'
-            unpickle = f'python -c "import pickle; pickle.load(open(r\'{pklfile}\', \'rb\'))({args})"'
+        args = '' if job.array is None else '$SLURM_ARRAY_TASK_ID'
+        unpickle = f'python -c "import pickle; pickle.load(open(r\'{pklfile}\', \'rb\'))({args})"'
 
-            lines.extend([unpickle, ''])
+        lines.extend([unpickle, ''])
 
         ## Save
         bashfile = self.path / f'{self.id(job)}.sh'
