@@ -15,6 +15,18 @@ from .utils import to_thread
 from .workflow import Job, cycles, prune
 
 
+class CyclicDependencyGraphError(Exception):
+    pass
+
+
+class DependencyNeverSatisfiedException(Exception):
+    pass
+
+
+class JobNotFailedException(Exception):
+    pass
+
+
 def schedule(
     *jobs,
     backend: str = None,
@@ -33,10 +45,6 @@ def schedule(
     }.get(backend, LocalScheduler)(**kwargs)
 
     return asyncio.run(scheduler.gather(*jobs))
-
-
-class CyclicDependencyGraphError(Exception):
-    pass
 
 
 class Scheduler(ABC):
@@ -104,9 +112,7 @@ class LocalScheduler(Scheduler):
 
         # Execute job
         try:
-            if job.skip:
-                return None
-            elif job.array is None:
+            if job.array is None:
                 return await to_thread(job.fn)
             else:
                 return await asyncio.gather(*(
@@ -117,13 +123,6 @@ class LocalScheduler(Scheduler):
             return error
 
 
-class DependencyNeverSatisfiedException(Exception):
-    pass
-
-
-class JobNotFailedException(Exception):
-    pass
-
 
 class SlurmScheduler(Scheduler):
     r"""Slurm scheduler"""
@@ -132,7 +131,7 @@ class SlurmScheduler(Scheduler):
         self,
         name: str = None,
         path: str = '.dawgz',
-        shell: str = '/bin/bash',
+        shell: str = os.environ['SHELL'],
         env: List[str] = [],  # cd, virtualenv, conda, etc.
         settings: Dict[str, Any] = {},
         **kwargs,
@@ -165,13 +164,6 @@ class SlurmScheduler(Scheduler):
             'timelimit': 'time',
         }
 
-        self.minimal = {
-            'cpus': 1,
-            'gpus': 0,
-            'ram': '2GB',
-            'timelimit': '15:00',
-        }
-
         # Identifier table
         self.table = {}
 
@@ -200,7 +192,7 @@ class SlurmScheduler(Scheduler):
         ]
 
         if job.array is None:
-            logfile = self.path / f'{self.id(job)}.log'
+            logfile = self.path / f'{self.id(job)}_%j.log'
         else:
             array = job.array
 
@@ -209,16 +201,13 @@ class SlurmScheduler(Scheduler):
             else:
                 lines.append('#SBATCH --array=' + ','.join(map(str, array)))
 
-            logfile = self.path / f'{self.id(job)}_%a.log'
+            logfile = self.path / f'{self.id(job)}_%j_%a.log'
 
         lines.extend([f'#SBATCH --output={logfile}', '#'])
 
         ## Settings
         settings = self.settings.copy()
         settings.update(job.settings)
-
-        if job.skip:
-            settings.update(self.minimal)
 
         for key, value in settings.items():
             key = self.translate.get(key, key)
@@ -253,26 +242,25 @@ class SlurmScheduler(Scheduler):
             '',
         ])
 
-        if not job.skip:
-            ## Exit at first error
-            lines.extend(['set -e', ''])
+        ## Exit at first error
+        lines.extend(['set -e', ''])
 
-            ## Environment
-            if job.env:
-                lines.extend([*job.env, ''])
-            elif self.env:
-                lines.extend([*self.env, ''])
+        ## Environment
+        if job.env:
+            lines.extend([*job.env, ''])
+        elif self.env:
+            lines.extend([*self.env, ''])
 
-            ## Pickle function
-            pklfile = self.path / f'{self.id(job)}.pkl'
+        ## Pickle function
+        pklfile = self.path / f'{self.id(job)}.pkl'
 
-            with open(pklfile, 'wb') as f:
-                f.write(pkl.dumps(job.fn))
+        with open(pklfile, 'wb') as f:
+            f.write(pkl.dumps(job.fn))
 
-            args = '' if job.array is None else '$SLURM_ARRAY_TASK_ID'
-            unpickle = f'python -c "import pickle; pickle.load(open(r\'{pklfile}\', \'rb\'))({args})"'
+        args = '' if job.array is None else '$SLURM_ARRAY_TASK_ID'
+        unpickle = f'python -c "import pickle; pickle.load(open(r\'{pklfile}\', \'rb\'))({args})"'
 
-            lines.extend([unpickle, ''])
+        lines.extend([unpickle, ''])
 
         ## Save
         bashfile = self.path / f'{self.id(job)}.sh'

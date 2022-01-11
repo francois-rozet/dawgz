@@ -5,6 +5,10 @@ from inspect import signature
 from typing import Any, Callable, Dict, Iterator, List, Set, Tuple, Union
 
 
+class SignatureException(Exception):
+    pass
+
+
 class Node(object):
     r"""Abstract graph node"""
 
@@ -43,52 +47,6 @@ class Node(object):
     @property
     def parents(self) -> List['Node']:
         return list(self._parents)
-
-
-def dfs(*nodes, backward: bool = False) -> Iterator[Node]:
-    queue = list(nodes)
-    visited = set()
-
-    while queue:
-        node = queue.pop()
-
-        if node in visited:
-            continue
-        else:
-            yield node
-
-        queue.extend(node.parents if backward else node.children)
-        visited.add(node)
-
-
-def cycles(*nodes, backward: bool = False) -> Iterator[List[Node]]:
-    queue = [list(nodes)]
-    path = []
-    pathset = set()
-    visited = set()
-
-    while queue:
-        branch = queue[-1]
-
-        if not branch:
-            if not path:
-                break
-
-            queue.pop()
-            pathset.remove(path.pop())
-            continue
-
-        node = branch.pop()
-
-        if node in visited:
-            if node in pathset:
-                yield path + [node]
-            continue
-
-        queue.append(node.parents if backward else node.children)
-        path.append(node)
-        pathset.add(node)
-        visited.add(node)
 
 
 class Job(Node):
@@ -131,9 +89,6 @@ class Job(Node):
 
         # Postconditions
         self.postconditions = []
-
-        # Skip
-        self.skip = False
 
     @property
     def fn(self) -> Callable:
@@ -230,14 +185,55 @@ class Job(Node):
             return post(i)
 
 
-class SignatureException(Exception):
-    pass
+def dfs(*nodes, backward: bool = False) -> Iterator[Node]:
+    queue = list(nodes)
+    visited = set()
+
+    while queue:
+        node = queue.pop()
+
+        if node in visited:
+            continue
+        else:
+            yield node
+
+        queue.extend(node.parents if backward else node.children)
+        visited.add(node)
+
+
+def cycles(*nodes, backward: bool = False) -> Iterator[List[Node]]:
+    queue = [list(nodes)]
+    path = []
+    pathset = set()
+    visited = set()
+
+    while queue:
+        branch = queue[-1]
+
+        if not branch:
+            if not path:
+                break
+
+            queue.pop()
+            pathset.remove(path.pop())
+            continue
+
+        node = branch.pop()
+
+        if node in visited:
+            if node in pathset:
+                yield path + [node]
+            continue
+
+        queue.append(node.parents if backward else node.children)
+        path.append(node)
+        pathset.add(node)
+        visited.add(node)
 
 
 def prune(*jobs) -> List[Job]:
     for job in dfs(*jobs, backward=True):
         if job.done():
-            job.skip = True
             job.detach(*job.dependencies)
         elif job.array is not None:
             pending = {
@@ -262,3 +258,22 @@ def prune(*jobs) -> List[Job]:
         job for job in jobs
         if not job.done()
     ]
+
+
+def leafs(*roots) -> Set[Job]:
+    def search(job: Job) -> Set[Node]:
+        if len(job.children) == 0:
+            jobs = {job}
+        else:
+            jobs = set()
+            for child in job.children:
+                jobs.update(search(child))
+
+        return jobs
+
+    jobs = set()
+
+    for root in roots:
+        jobs.update(search(root))
+
+    return jobs
