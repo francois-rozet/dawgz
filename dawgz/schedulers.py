@@ -83,7 +83,7 @@ class LocalScheduler(Scheduler):
         result = await self.submit(job)
 
         if isinstance(result, Exception):
-            if isinstance(result, DependencyNeverSatisfiedException):
+            if isinstance(result, DependencyNeverSatisfiedError):
                 return result
             elif status == 'success':
                 return result
@@ -91,7 +91,7 @@ class LocalScheduler(Scheduler):
                 return None
         else:
             if status == 'failure':
-                return JobNotFailedException(f'{job}')
+                return JobNotFailedError(f'{job}')
             else:
                 return result
 
@@ -110,7 +110,7 @@ class LocalScheduler(Scheduler):
 
                 if isinstance(result, Exception):
                     if job.waitfor == 'all':
-                        raise DependencyNeverSatisfiedException(f'aborting job \'{job}\'') from result
+                        raise DependencyNeverSatisfiedError(f'aborting job \'{job}\'') from result
                 else:
                     if job.waitfor == 'any':
                         break
@@ -119,7 +119,7 @@ class LocalScheduler(Scheduler):
             break
         else:
             if job.dependencies and job.waitfor == 'any':
-                raise DependencyNeverSatisfiedException(f'aborting job \'{job}\'')
+                raise DependencyNeverSatisfiedError(f'aborting job \'{job}\'')
 
         # Execute job
         if job.empty:
@@ -204,7 +204,7 @@ class SlurmScheduler(Scheduler):
 
         for jobid in jobids:
             if isinstance(jobid, Exception):
-                raise DependencyNeverSatisfiedException(f'aborting job \'{job}\'') from jobid
+                raise DependencyNeverSatisfiedError(f'aborting job \'{job}\'') from jobid
 
         # Write submission file
         lines = [
@@ -307,11 +307,11 @@ class CyclicDependencyGraphError(Exception):
     pass
 
 
-class DependencyNeverSatisfiedException(Exception):
+class DependencyNeverSatisfiedError(Exception):
     pass
 
 
-class JobNotFailedException(Exception):
+class JobNotFailedError(Exception):
     pass
 
 
