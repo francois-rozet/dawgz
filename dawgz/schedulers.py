@@ -4,7 +4,6 @@ import asyncio
 import cloudpickle as pkl
 import os
 import shutil
-import traceback
 
 from abc import ABC, abstractmethod
 from datetime import datetime
@@ -12,7 +11,7 @@ from pathlib import Path
 from subprocess import run
 from typing import Any, Dict, List
 
-from .utils import to_thread
+from .utils import to_thread, print_traces
 from .workflow import Job, cycles, prune as _prune
 
 
@@ -24,20 +23,7 @@ class Scheduler(ABC):
 
     async def gather(self, *jobs) -> List[Any]:
         results = await asyncio.gather(*map(self.submit, jobs))
-
-        collect = []
-
-        for result in results:
-            if isinstance(result, Exception):
-                try:
-                    raise result
-                except:
-                    collect.append(traceback.format_exc())
-
-        if collect:
-            sep = '-' * 80 + '\n'
-            print(sep + sep.join(collect) + sep, end='')
-
+        await asyncio.wait(self.submissions.values())  # wait for all submitted jobs to complete
         return results
 
     async def submit(self, job: Job) -> Any:
@@ -71,7 +57,12 @@ def schedule(
         'slurm': SlurmScheduler,
     }.get(backend)(**kwargs)
 
-    asyncio.run(scheduler.gather(*jobs))
+    results = asyncio.run(scheduler.gather(*jobs))
+
+    print_traces([
+        result for result in results
+        if isinstance(result, Exception)
+    ])
 
     return scheduler
 
