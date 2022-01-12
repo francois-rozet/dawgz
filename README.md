@@ -34,11 +34,11 @@ import os
 from dawgz import job, after, ensure, schedule
 
 samples = 10000
-tasks = 10
+tasks = 5
 
 @ensure(lambda i: os.path.exists(f'pi_{i}.npy'))
 @job(array=tasks, cpus=2, ram='2GB')
-def sampling(i: int):
+def generate(i: int):
     print(f'Task {i + 1} / {tasks}')
 
     x = np.random.random(samples)
@@ -47,7 +47,7 @@ def sampling(i: int):
 
     np.save(f'pi_{i}.npy', within_circle)
 
-@after(sampling)
+@after(generate)
 @job(cpus=4, ram='4GB', timelimit='15:00')
 def estimate():
     files = glob.glob('pi_*.npy')
@@ -65,14 +65,23 @@ Executing this script with the `'local'` backend displays
 
 ```console
 $ python examples/pi.py
-TODO
+Task 1 / 5
+Task 2 / 5
+Task 3 / 5
+Task 4 / 5
+Task 5 / 5
+π ≈ 3.1418666666666666
 ```
 
 Alternatively, on a Slurm HPC cluster, changing the backend to `'slurm'` results in the following job queue.
 
 ```console
 $ squeue -u username
-TODO
+             JOBID PARTITION     NAME     USER ST       TIME  NODES NODELIST(REASON)
+           1868832       all estimate username PD       0:00      1 (Dependency)
+     1868831_[2-4]       all generate username PD       0:00      1 (Resources)
+         1868831_0       all generate username  R       0:01      1 compute-xx
+         1868831_1       all generate username  R       0:01      1 compute-xx
 ```
 
 Check out the [examples](examples/) and the [interface](#Interface) to discover the functionalities of `dawgz`.

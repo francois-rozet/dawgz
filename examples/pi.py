@@ -7,11 +7,11 @@ import os
 from dawgz import job, after, ensure, schedule
 
 samples = 10000
-tasks = 10
+tasks = 5
 
 @ensure(lambda i: os.path.exists(f'pi_{i}.npy'))
 @job(array=tasks, cpus=2, ram='2GB')
-def sampling(i: int):
+def generate(i: int):
     print(f'Task {i + 1} / {tasks}')
 
     x = np.random.random(samples)
@@ -20,7 +20,7 @@ def sampling(i: int):
 
     np.save(f'pi_{i}.npy', within_circle)
 
-@after(sampling)
+@after(generate)
 @job(cpus=4, ram='4GB', timelimit='15:00')
 def estimate():
     files = glob.glob('pi_*.npy')
