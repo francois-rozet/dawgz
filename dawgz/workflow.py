@@ -64,9 +64,13 @@ class Job(Node):
         self._array = None
         self._waitfor = 'all'  # Default dependency mode
 
+        if type(array) is int:
+            array = range(array)
+
         if array is None:
             assert accepts(f), 'job should not expect arguments'
         else:
+            assert len(array) > 0, 'job array should contain at least a single task'
             assert accepts(f, 0), 'job array should expect one argument'
 
         self.f = f
@@ -82,18 +86,6 @@ class Job(Node):
         # Conditions
         self.preconditions = []
         self.postconditions = []
-
-    @property
-    def array(self) -> Union[int, Set[int], range]:
-        return self._array
-
-    @array.setter
-    def array(self, value: Union[int, Set[int], range] = None) -> None:
-        if value is not None:
-            if type(value) is int:
-                value = range(value)
-
-        self._array = value
 
     @property
     def fn(self) -> Callable:
@@ -184,7 +176,7 @@ class Job(Node):
             return condition()
         elif i is None:
             return all(map(condition, self.array))
-        elif:
+        else:
             return condition(i)
 
 
