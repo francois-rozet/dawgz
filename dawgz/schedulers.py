@@ -54,7 +54,12 @@ class Scheduler(ABC):
         if job not in self.submissions:
             self.submissions[job] = asyncio.create_task(self._submit(job))
 
-        return await self.submissions[job]
+        try:
+            result = await self.submissions[job]
+        except Exception as error:
+            result = error
+
+        return result
 
     @abstractmethod
     async def _submit(self, job: Job) -> Any:
@@ -74,7 +79,7 @@ class LocalScheduler(Scheduler):
                 return None
         else:
             if status == 'failure':
-                raise JobNotFailedException(f'{job}')
+                return JobNotFailedException(f'{job}')
             else:
                 return result
 
