@@ -11,7 +11,7 @@ def a():
     print('a')
     raise Exception()
 
-@require(lambda: 2 + 2 == 2 * 2)
+@require(lambda: 1 + 1 == 2)
 @job
 def b():
     time.sleep(1)
@@ -31,10 +31,17 @@ def c(i: int):
     print(f'c{i}')
     finished[i] = True
 
-@after(b, c)
-@waitfor('any')
+@after(b)
+@ensure(lambda: 2 + 2 == 2 * 2)
+@ensure(lambda: 1 + 2 + 3 == 1 * 2 * 3)
 @job
 def d():
     print('d')
 
-schedule(b, d, backend='local', prune=True)
+@after(b, c)
+@waitfor('any')
+@job
+def e():
+    print('e')
+
+schedule(d, e, backend='local', prune=True)
