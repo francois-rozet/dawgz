@@ -22,7 +22,7 @@ In `schedule`, the dependency graph of `c` and `e` is pruned with respect to the
 
 Then, the jobs in the workflow graph are submitted, which results in the following output
 
-```console
+```
 b
 a
 a

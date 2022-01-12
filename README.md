@@ -10,13 +10,13 @@ The `dawgz` package allows you to define and execute complex workflows, directly
 
 The `dawgz` package is available on [PyPi](https://pypi.org/project/dawgz/), which means it is installable via `pip`.
 
-```console
+```
 $ pip install dawgz
 ```
 
 Alternatively, if you need the latest features, you can install it using
 
-```console
+```
 $ pip install git+https://github.com/francois-rozet/dawgz
 ```
 
@@ -63,7 +63,7 @@ In the preceding example, we define two jobs: `sampling` and `estimate`. The for
 
 Executing this script with the `'local'` backend displays
 
-```console
+```
 $ python examples/pi.py
 Task 1 / 5
 Task 2 / 5
@@ -75,7 +75,7 @@ Task 5 / 5
 
 Alternatively, on a Slurm HPC cluster, changing the backend to `'slurm'` results in the following job queue.
 
-```console
+```
 $ squeue -u username
              JOBID PARTITION     NAME     USER ST       TIME  NODES NODELIST(REASON)
            1868832       all estimate username PD       0:00      1 (Dependency)
