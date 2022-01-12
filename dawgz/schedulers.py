@@ -208,8 +208,8 @@ class SlurmScheduler(Scheduler):
             f'#SBATCH --job-name={job.name}',
         ]
 
-        if job.array is None or job.empty:
-            logfile = self.path / f'{self.id(job)}.log'
+        if job.array is None:
+            logfile = self.path / f'{self.id(job)}_%j.log'
         else:
             array = job.array
 
@@ -218,7 +218,7 @@ class SlurmScheduler(Scheduler):
             else:
                 lines.append('#SBATCH --array=' + ','.join(map(str, array)))
 
-            logfile = self.path / f'{self.id(job)}_%a.log'
+            logfile = self.path / f'{self.id(job)}_%j_%a.log'
 
         lines.extend([f'#SBATCH --output={logfile}', '#'])
 

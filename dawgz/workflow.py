@@ -191,7 +191,7 @@ class Job(Node):
             return condition()
         elif i is None:
             return all(map(condition, self.array))
-        elif:
+        else:
             return condition(i)
 
 
@@ -256,6 +256,7 @@ def cycles(*nodes, backward: bool = False) -> Iterator[List[Node]]:
 
 
 def prune(*jobs) -> List[Job]:
+    _jobs = set(jobs)
     for job in dfs(*jobs, backward=True):
         if job.done():
             job.detach(*job.dependencies)
@@ -278,7 +279,17 @@ def prune(*jobs) -> List[Job]:
         elif job.waitfor == 'all':
             job.detach(*done)
 
+        done = {
+            dep for dep, status in job.dependencies.items()
+            if dep.done() and status == 'failure'
+        }
+
+        if done:
+            job.detach(*done)
+            if len(job.dependencies) == 0:
+                _jobs.remove(job)
+
     return [
-        job for job in jobs
+        job for job in _jobs
         if not job.done()
     ]
