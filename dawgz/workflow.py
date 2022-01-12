@@ -163,11 +163,17 @@ class Job(Node):
         self.postconditions.append(condition)
 
     def require(self, condition: Callable) -> None:
+        c = condition  # Prevent collision within lambda
+
         if self.array is None:
-            assert accepts(condition, 0), 'precondition should not expect arguments'
-            self.preconditions.append(condition)
-        elif not accepts(condition, 0):
-            self.preconditions.append(lambda _: condition())
+            assert accepts(condition), 'precondition should not expect arguments'
+
+        else:
+            assert accepts(condition) or accepts(condition, 0), 'precondition expects at most one argument'
+            if not accepts(condition, 0):
+                c = lambda _: condition()
+
+        self.preconditions.append(c)
 
     @lru_cache(None)
     def done(self, i: int = None) -> bool:

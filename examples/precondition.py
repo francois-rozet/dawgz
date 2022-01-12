@@ -25,6 +25,7 @@ def print_intro():
 @after(generate_uniform)
 @after(print_intro)
 @require(lambda: len(glob.glob('*.npy')) >= 10 + 100)  # Precondition that depends on several dependencis
+@require(lambda i: 1 + 1 == 2)
 @job(array=25)
 def do_something(i: int):
     print(f'Step {i}')
