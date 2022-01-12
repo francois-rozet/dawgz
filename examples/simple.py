@@ -19,6 +19,13 @@ def b():
     time.sleep(1)
     print('b')
 
+@after(a, status='success')
+@ensure(lambda: 2 + 2 == 2 * 2)
+@ensure(lambda: 1 + 2 + 3 == 1 * 2 * 3)
+@job
+def c():
+    print('c')
+
 finished = [True] * 100
 finished[42] = False
 
@@ -27,21 +34,14 @@ finished[42] = False
 @require(lambda i: i < len(finished))
 @ensure(lambda i: finished[i])
 @job(array=100)
-def c(i: int):
-    print(f'c{i}')
+def d(i: int):
+    print(f'd{i}')
     finished[i] = True
 
-@after(b)
-@ensure(lambda: 2 + 2 == 2 * 2)
-@ensure(lambda: 1 + 2 + 3 == 1 * 2 * 3)
-@job
-def d():
-    print('d')
-
-@after(b, c)
+@after(b, d)
 @waitfor('any')
 @job
 def e():
     print('e')
 
-schedule(d, e, backend='local', prune=True)
+schedule(c, e, backend='local', prune=True)
