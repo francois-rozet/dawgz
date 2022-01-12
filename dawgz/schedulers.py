@@ -193,9 +193,10 @@ class SlurmScheduler(Scheduler):
             for dep in job.dependencies
         ])
 
-        # Verify that sbatch was successful
-        exceptions = list(filter(lambda x: type(x) is Exception, jobids))
-        assert len(exceptions) == 0, exceptions[0]
+        # Verify that sbatch was successful for dependencies
+        submission_errors = list(filter(lambda x: type(x) is SlurmSubmissionError, jobids))
+        if len(submission_errors) > 0:
+            raise submission_errors[0]
 
         # Write submission file
         lines = [
@@ -285,10 +286,14 @@ class SlurmScheduler(Scheduler):
             f.write('\n'.join(lines))
 
         # Submit job
-        text = run(['sbatch', str(bashfile)], capture_output=True, check=True, text=True).stdout
-        jobid, *_ = text.splitlines()
+        try:
+            text = run(['sbatch', str(bashfile)], capture_output=True, check=True, text=True).stdout
+            jobid, *_ = text.splitlines()
 
-        return jobid
+            return jobid
+        except Exception as e:
+            raise SlurmSubmissionError(e)
+
 
 
 class CyclicDependencyGraphError(Exception):
@@ -300,4 +305,8 @@ class DependencyNeverSatisfiedException(Exception):
 
 
 class JobNotFailedException(Exception):
+    pass
+
+
+class SlurmSubmissionError(Exception):
     pass
