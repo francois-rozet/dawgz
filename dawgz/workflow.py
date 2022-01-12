@@ -103,9 +103,9 @@ class Job(Node):
         post = self.reduce(self.postconditions)
 
         def call(*args) -> Any:
-            assert pre(*args), f'job {name} does not satisfy its preconditions'
+            assert pre(*args), f'{name} does not satisfy its preconditions'
             result = f(*args)
-            assert post(*args), f'job {name} does not satisfy its postconditions'
+            assert post(*args), f'{name} does not satisfy its postconditions'
 
             return result
 
@@ -151,6 +151,21 @@ class Job(Node):
 
         self._waitfor = mode
 
+    def require(self, condition: Callable) -> None:
+        if self.array is None:
+            assert accepts(condition), 'precondition should not expect arguments'
+        else:
+            assert (
+                accepts(condition) or accepts(condition, 0),
+                'precondition should expect at most one argument'
+            )
+
+            if accepts(condition):
+                c = condition
+                condition = lambda _: c()
+
+        self.preconditions.append(condition)
+
     def ensure(self, condition: Callable) -> None:
         if self.array is None:
             assert accepts(condition), 'postcondition should not expect arguments'
@@ -158,14 +173,6 @@ class Job(Node):
             assert accepts(condition, 0), 'postcondition should expect one argument'
 
         self.postconditions.append(condition)
-
-    def require(self, condition: Callable) -> None:
-        if self.array is None:
-            assert accepts(condition), 'precondition should not expect arguments'
-        else:
-            assert accepts(condition, 0), 'precondition should expect one argument'
-
-        self.preconditions.append(condition)
 
     def reduce(self, conditions: List[Callable]) -> Callable:
         if self.array is None:

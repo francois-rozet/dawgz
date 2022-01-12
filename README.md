@@ -6,73 +6,99 @@ The `dawgz` package allows you to define and execute complex workflows, directly
 
 > `dawgz` should be pronounced *dogs* :dog:
 
+## Installation
+
+The `dawgz` package is available on [PyPi](https://pypi.org/project/dawgz/), which means it is installable via `pip`.
+
+```
+$ pip install dawgz
+```
+
+Alternatively, if you need the latest features, you can install it using
+
+```
+$ pip install git+https://github.com/francois-rozet/dawgz
+```
+
 ## Getting started
+
+In `dawgz`, a job is a Python function decorated by the `@dawgz.job` decorator. This decorator allows to define the job's settings, like its name, whether it is a job array, the resources it needs, etc. Importantly, a job can have other jobs as dependencies, which implicitely defines a workflow graph. The `@dawgz.after` decorator is used to define such dependencies. Additionally, to ensure that the job completed successfuly, [postconditions](https://en.wikipedia.org/wiki/Postcondition) can be added with the `@dawgz.ensure` decorator.
+
+Finally, `dawgz` provides the `dawgz.schedule` function in order to schedule target jobs with a selected backend. This function automatically takes care of scheduling the dependency graph of the target jobs.
 
 ```python
 import glob
 import numpy as np
 import os
 
-from dawgz import after, ensure, job, schedule
+from dawgz import job, after, ensure, schedule
 
-n = 10000
-tasks = 10
+samples = 10000
+tasks = 5
 
-@ensure(lambda i: os.path.exists(f'pi-{i}.npy'))
-@job(cpus='4', memory='4GB', array=tasks)
-def estimate(i: int):
-    print(f'Executing task {i + 1} / {tasks}.')
-    x = np.random.random(n)
-    y = np.random.random(n)
-    pi_estimate = (x**2 + y**2 <= 1)
-    np.save(f'pi-{i}.npy', pi_estimate)
+@ensure(lambda i: os.path.exists(f'pi_{i}.npy'))
+@job(array=tasks, cpus=1, ram='2GB', timelimit='5:00')
+def generate(i: int):
+    print(f'Task {i + 1} / {tasks}')
 
-@after(estimate)
-@ensure(lambda: os.path.exists('pi.npy'))
-@job(cpus='4')
-def merge():
-    files = glob.glob('pi-*.npy')
+    x = np.random.random(samples)
+    y = np.random.random(samples)
+    within_circle = x ** 2 + y ** 2 <= 1
+
+    np.save(f'pi_{i}.npy', within_circle)
+
+@after(generate)
+@job(cpus=2, ram='4GB', timelimit='15:00')
+def estimate():
+    files = glob.glob('pi_*.npy')
     stack = np.vstack([np.load(f) for f in files])
-    pi_estimate = stack.sum() / (n * tasks) * 4
-    print('π ≅', pi_estimate)
-    np.save('pi.npy', pi_estimate)
+    pi_estimate = stack.mean() * 4
 
-schedule(merge, backend='local')  # Executes merge and its dependencies
-```
-Executing this Python program (`python examples/pi.py`) on a Slurm HPC cluster will launch the following jobs.
-```
-           1803299       all    merge username PD       0:00      1 (Dependency)
-     1803298_[6-9]       all estimate username PD       0:00      1 (Resources)
-         1803298_3       all estimate username  R       0:01      1 compute-xx
-         1803298_4       all estimate username  R       0:01      1 compute-xx
-         1803298_5       all estimate username  R       0:01      1 compute-xx
+    print(f'π ≈ {pi_estimate}')
+
+schedule(estimate, backend='local')
 ```
 
-Check the [examples](examples/) directory to explore the functionality.
+In the preceding example, we define two jobs: `sampling` and `estimate`. The former is a *job array*, meaning that it is executed concurrently for all values of `i = 0` up to `tasks - 1`. It also defines a postcondition verifying whether a file exists after the job's completion. If it is not the case, the job raises an `AssertionError` at runtime. The job `estimate` only starts after `sampling` succeeded.
 
-## Installation
+Executing this script with the `'local'` backend displays
 
-The `dawgz` package is available on [PyPi](https://pypi.org/project/dawgz/), which means it is installable via `pip`.
-```console
-you@local:~ $ pip install dawgz
 ```
-If you would like the latest features, you can install it using this Git repository.
-```console
-you@local:~ $ pip install git+https://github.com/francois-rozet/dawgz
-```
-If you would like to run the examples as well, be sure to install the *optional* example dependencies.
-```console
-you@local:~ $ pip install 'dawgz[examples]'
+$ python examples/pi.py
+Task 1 / 5
+Task 2 / 5
+Task 3 / 5
+Task 4 / 5
+Task 5 / 5
+π ≈ 3.1418666666666666
 ```
 
-## Available backends
+Alternatively, on a Slurm HPC cluster, changing the backend to `'slurm'` results in the following job queue.
 
-Currently, `dawgz.schedule` only supports a `local` and `slurm` backend.
+```
+$ squeue -u username
+             JOBID PARTITION     NAME     USER ST       TIME  NODES NODELIST(REASON)
+           1868832       all estimate username PD       0:00      1 (Dependency)
+     1868831_[2-4]       all generate username PD       0:00      1 (Resources)
+         1868831_0       all generate username  R       0:01      1 compute-xx
+         1868831_1       all generate username  R       0:01      1 compute-xx
+```
+
+Check out the [examples](examples/) and the [interface](#Interface) to discover the functionalities of `dawgz`.
+
+## Interface
+
+### Decorators
+
+* TODO
+
+### Backends
+
+Currently, `dawgz.schedule` only supports two backends: `local` and `slurm`.
+
+* `local` schedules locally the jobs by waiting asynchronously for dependencies to finish before submitting each job. It does not take the required resources into account.
+* `slurm` submits the jobs to the Slurm workload manager by generating automatically the `sbatch` submission scripts.
 
 ## Contributing
 
 TODO
-
-## License
-
-As described in the [`LICENSE`](LICENSE.txt) file.
