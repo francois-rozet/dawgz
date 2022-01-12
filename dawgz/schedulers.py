@@ -193,6 +193,9 @@ class SlurmScheduler(Scheduler):
             for dep in job.dependencies
         ])
 
+        # Check if something went wrong during the submission of the dependencies
+        assert all([type(jobid) is str and jobid.isnumeric() for jobid in jobids]), 'failed to procure dependencies from sbatch'
+
         # Write submission file
         lines = [
             f'#!{self.shell}',
