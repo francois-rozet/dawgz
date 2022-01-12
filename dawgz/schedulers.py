@@ -4,6 +4,7 @@ import asyncio
 import cloudpickle as pkl
 import os
 import shutil
+import traceback
 
 from abc import ABC, abstractmethod
 from datetime import datetime
@@ -15,12 +16,50 @@ from .utils import to_thread
 from .workflow import Job, cycles, prune as _prune
 
 
+class Scheduler(ABC):
+    r"""Abstract workflow scheduler"""
+
+    def __init__(self):
+        self.submissions = {}
+
+    async def gather(self, *jobs) -> List[Any]:
+        results = await asyncio.gather(*map(self.submit, jobs))
+
+        collect = []
+
+        for result in results:
+            if isinstance(result, Exception):
+                try:
+                    raise result
+                except:
+                    collect.append(traceback.format_exc())
+
+        if collect:
+            sep = '-' * 80 + '\n'
+            print(sep + sep.join(collect) + sep, end='')
+
+        return results
+
+    async def submit(self, job: Job) -> Any:
+        if job not in self.submissions:
+            self.submissions[job] = asyncio.create_task(self._submit(job))
+
+        try:
+            return await self.submissions[job]
+        except Exception as e:
+            return e
+
+    @abstractmethod
+    async def _submit(self, job: Job) -> Any:
+        pass
+
+
 def schedule(
     *jobs,
     backend: str,
     prune: bool = False,
     **kwargs,
-) -> List[Any]:
+) -> Scheduler:
     for cycle in cycles(*jobs, backward=True):
         raise CyclicDependencyGraphError(' <- '.join(map(str, cycle)))
 
@@ -32,38 +71,9 @@ def schedule(
         'slurm': SlurmScheduler,
     }.get(backend)(**kwargs)
 
-    return asyncio.run(scheduler.gather(*jobs))
+    asyncio.run(scheduler.gather(*jobs))
 
-
-class Scheduler(ABC):
-    r"""Abstract workflow scheduler"""
-
-    def __init__(self):
-        self.submissions = {}
-
-    async def gather(self, *jobs) -> List[Any]:
-        results = await asyncio.gather(*map(self.submit, jobs))
-
-        for result in results:
-            if isinstance(result, Exception):
-                raise result
-
-        return results
-
-    async def submit(self, job: Job) -> Any:
-        if job not in self.submissions:
-            self.submissions[job] = asyncio.create_task(self._submit(job))
-
-        try:
-            result = await self.submissions[job]
-        except Exception as error:
-            result = error
-
-        return result
-
-    @abstractmethod
-    async def _submit(self, job: Job) -> Any:
-        pass
+    return scheduler
 
 
 class LocalScheduler(Scheduler):
@@ -73,7 +83,9 @@ class LocalScheduler(Scheduler):
         result = await self.submit(job)
 
         if isinstance(result, Exception):
-            if status == 'success':
+            if isinstance(result, DependencyNeverSatisfiedException):
+                return result
+            elif status == 'success':
                 return result
             else:
                 return None
@@ -98,7 +110,7 @@ class LocalScheduler(Scheduler):
 
                 if isinstance(result, Exception):
                     if job.waitfor == 'all':
-                        raise DependencyNeverSatisfiedException(f'aborting job {job}') from result
+                        raise DependencyNeverSatisfiedException(f'aborting job \'{job}\'') from result
                 else:
                     if job.waitfor == 'any':
                         break
@@ -107,21 +119,18 @@ class LocalScheduler(Scheduler):
             break
         else:
             if job.dependencies and job.waitfor == 'any':
-                raise DependencyNeverSatisfiedException(f'aborting job {job}')
+                raise DependencyNeverSatisfiedException(f'aborting job \'{job}\'')
 
         # Execute job
-        try:
-            if job.empty:
-                return None
-            elif job.array is None:
-                return await to_thread(job.fn)
-            else:
-                return await asyncio.gather(*(
-                    to_thread(job.fn, i)
-                    for i in job.array
-                ))
-        except Exception as error:
-            return error
+        if job.empty:
+            return None
+        elif job.array is None:
+            return await to_thread(job.fn)
+        else:
+            return await asyncio.gather(*(
+                to_thread(job.fn, i)
+                for i in job.array
+            ))
 
 
 class SlurmScheduler(Scheduler):
@@ -196,7 +205,7 @@ class SlurmScheduler(Scheduler):
         # Verify that sbatch was successful for dependencies
         submission_errors = list(filter(lambda x: type(x) is SlurmSubmissionError, jobids))
         if len(submission_errors) > 0:
-            raise submission_errors[0]
+            raise DependencyNeverSatisfiedException(f'aborting job \'{job}\'') from submission_errors[0]
 
         # Write submission file
         lines = [
