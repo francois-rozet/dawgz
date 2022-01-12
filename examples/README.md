@@ -1,3 +1,5 @@
+# Examples
+
 ## Simple example
 
 In [`simple.py`](simple.py) we define a workflow composed of 4 jobs (`a`, `b`, `c` and `d`). In summary,
