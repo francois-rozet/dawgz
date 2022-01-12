@@ -111,7 +111,7 @@ class LocalScheduler(Scheduler):
 
                 if isinstance(result, Exception):
                     if job.waitfor == 'all':
-                        raise DependencyNeverSatisfiedError(f'aborting job {job}') from result
+                        raise DependencyNeverSatisfiedError(f'aborting {job}') from result
                 else:
                     if job.waitfor == 'any':
                         break
@@ -120,7 +120,7 @@ class LocalScheduler(Scheduler):
             break
         else:
             if job.dependencies and job.waitfor == 'any':
-                raise DependencyNeverSatisfiedError(f'aborting job {job}')
+                raise DependencyNeverSatisfiedError(f'aborting {job}')
 
         # Execute job
         try:
@@ -157,6 +157,7 @@ class SlurmScheduler(Scheduler):
             name = datetime.now().strftime('%y%m%d_%H%M%S')
 
         path = Path(path) / name
+        assert not path.exists(), f'{path} already exists'
         path.mkdir(parents=True, exist_ok=True)
 
         self.name = name
@@ -175,7 +176,6 @@ class SlurmScheduler(Scheduler):
             'gpus': 'gpus-per-task',
             'ram': 'mem',
             'memory': 'mem',
-            'time': 'time',
             'timelimit': 'time',
         }
 
@@ -208,7 +208,7 @@ class SlurmScheduler(Scheduler):
 
         for jobid in jobids:
             if isinstance(jobid, Exception):
-                raise DependencyNeverSatisfiedError(f'aborting job \'{job}\'') from jobid
+                raise DependencyNeverSatisfiedError(f'aborting {job}') from jobid
 
         # Write submission file
         lines = [
@@ -218,7 +218,7 @@ class SlurmScheduler(Scheduler):
         ]
 
         if job.array is None or job.empty:
-            logfile = self.path / f'{self.id(job)}_%j.log'
+            logfile = self.path / f'{self.id(job)}.log'
         else:
             array = job.array
 
@@ -227,7 +227,7 @@ class SlurmScheduler(Scheduler):
             else:
                 lines.append('#SBATCH --array=' + ','.join(map(str, array)))
 
-            logfile = self.path / f'{self.id(job)}_%j_%a.log'
+            logfile = self.path / f'{self.id(job)}_%a.log'
 
         lines.extend([f'#SBATCH --output={logfile}', '#'])
 
@@ -304,7 +304,7 @@ class SlurmScheduler(Scheduler):
 
             return jobid
         except Exception as e:
-            raise SlurmSubmissionError(f'{job}') from e
+            raise JobSubmissionError(f'could not submit {job}') from e
 
 
 class CyclicDependencyGraphError(Exception):
@@ -323,5 +323,5 @@ class JobNotFailedError(Exception):
     pass
 
 
-class SlurmSubmissionError(Exception):
+class JobSubmissionError(Exception):
     pass
