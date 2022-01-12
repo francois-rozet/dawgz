@@ -67,6 +67,7 @@ class Job(Node):
         if array is None:
             assert accepts(f), 'job should not expect arguments'
         else:
+            assert len(array) > 0, 'job array should expect at least one task'
             assert accepts(f, 0), 'job array should expect one argument'
 
         self.f = f
