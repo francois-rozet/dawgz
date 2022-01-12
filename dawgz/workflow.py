@@ -60,9 +60,8 @@ class Job(Node):
     ):
         super().__init__(f.__name__ if name is None else name)
 
-        # Private property initialization
-        self._array = None
-        self._waitfor = 'all'  # Default dependency mode
+        if type(array) is int:
+            array = range(array)
 
         if array is None:
             assert accepts(f), 'job should not expect arguments'
@@ -80,21 +79,12 @@ class Job(Node):
         self.settings = settings.copy()
         self.settings.update(kwargs)
 
+        # Dependencies
+        self._waitfor = 'all'
+
         # Conditions
         self.preconditions = []
         self.postconditions = []
-
-    @property
-    def array(self) -> Union[int, Set[int], range]:
-        return self._array
-
-    @array.setter
-    def array(self, value: Union[int, Set[int], range] = None) -> None:
-        if value is not None:
-            if type(value) is int:
-                value = range(value)
-
-        self._array = value
 
     @property
     def fn(self) -> Callable:
@@ -156,10 +146,8 @@ class Job(Node):
         if self.array is None:
             assert accepts(condition), 'precondition should not expect arguments'
         else:
-            assert (
-                accepts(condition) or accepts(condition, 0),
-                'precondition should expect at most one argument'
-            )
+            assert accepts(condition) or accepts(condition, 0), \
+                   'precondition should expect at most one argument'
 
             if accepts(condition):
                 c = condition
