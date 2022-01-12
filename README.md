@@ -37,7 +37,7 @@ samples = 10000
 tasks = 5
 
 @ensure(lambda i: os.path.exists(f'pi_{i}.npy'))
-@job(array=tasks, cpus=2, ram='2GB')
+@job(array=tasks, cpus=1, ram='2GB', timelimit='5:00')
 def generate(i: int):
     print(f'Task {i + 1} / {tasks}')
 
@@ -48,7 +48,7 @@ def generate(i: int):
     np.save(f'pi_{i}.npy', within_circle)
 
 @after(generate)
-@job(cpus=4, ram='4GB', timelimit='15:00')
+@job(cpus=2, ram='4GB', timelimit='15:00')
 def estimate():
     files = glob.glob('pi_*.npy')
     stack = np.vstack([np.load(f) for f in files])
