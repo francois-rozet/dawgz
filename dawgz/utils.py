@@ -29,7 +29,7 @@ async def to_thread(f: Callable, /, *args, **kwargs) -> Any:
     return await loop.run_in_executor(None, func_call)
 
 
-@lru_cache(typed=True)
+@lru_cache(maxsize=None, typed=True)
 def accepts(f: Callable, *args, **kwargs) -> bool:
     r"""Checks whether function `f` accepts the supplied
     *args and **kwargs without errors."""
