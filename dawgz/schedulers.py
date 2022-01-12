@@ -42,7 +42,13 @@ class Scheduler(ABC):
         self.submissions = {}
 
     async def gather(self, *jobs) -> List[Any]:
-        return await asyncio.gather(*map(self.submit, jobs))
+        results = await asyncio.gather(*map(self.submit, jobs))
+
+        for result in results:
+            if isinstance(result, Exception):
+                raise result
+
+        return results
 
     async def submit(self, job: Job) -> Any:
         if job not in self.submissions:
