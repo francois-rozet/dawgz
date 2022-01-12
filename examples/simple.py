@@ -1,7 +1,8 @@
+#!usr/bin/env python
+
 import time
 
 from dawgz import job, after, waitfor, require, ensure, schedule
-
 
 @job
 def a():
@@ -10,10 +11,7 @@ def a():
     print('a')
     raise Exception()
 
-def check_something():
-    return True
-
-@ensure(check_something)
+@require(lambda: 1 + 1 == 2)
 @job
 def b():
     time.sleep(1)
@@ -21,29 +19,29 @@ def b():
     time.sleep(1)
     print('b')
 
+@after(a, status='success')
+@ensure(lambda: 2 + 2 == 2 * 2)
+@ensure(lambda: 1 + 2 + 3 == 1 * 2 * 3)
+@job
+def c():
+    print('c')
+
 finished = [True] * 100
 finished[42] = False
 
 @after(a, status='any')
-@after(b)
+@require(lambda: type(finished) is list)
+@require(lambda i: i < len(finished))
 @ensure(lambda i: finished[i])
 @job(array=100)
-def c(i: int):
-    print(f'c{i}')
+def d(i: int):
+    print(f'd{i}')
     finished[i] = True
 
-@after(b, c)
-@require(lambda: 1 >= 0)  # Check precondition at runtime
-@require(lambda i: i >= 0)  # Array jobs can have preconditions based on the array
-@job(array=3)
-def d(i):
-    print(f'd{i}')
-
-@after(c)
-@require(lambda: 1 == 1)  # Specifying an argument to a precondition that is not an array job will yield an AssertionError
+@after(b, d)
+@waitfor('any')
 @job
 def e():
     print('e')
 
-returns = schedule(d, e, backend='local')  # prints a a c42 d0 d1 d2 (e is executed concurrently by asyncio)
-print(returns)
+schedule(c, e, backend='local', prune=True)

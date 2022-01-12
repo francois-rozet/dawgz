@@ -18,7 +18,7 @@ from .workflow import Job, cycles, prune as _prune
 def schedule(
     *jobs,
     backend: str,
-    prune: bool = True,
+    prune: bool = False,
     **kwargs,
 ) -> List[Any]:
     for cycle in cycles(*jobs, backward=True):
@@ -150,6 +150,8 @@ class SlurmScheduler(Scheduler):
             'cpus': 'cpus-per-task',
             'gpus': 'gpus-per-task',
             'ram': 'mem',
+            'memory': 'mem',
+            'time': 'time',
             'timelimit': 'time',
         }
 
