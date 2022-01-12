@@ -29,6 +29,6 @@ def estimate():
     stack = np.vstack([np.load(f) for f in files])
     pi_estimate = stack.mean() * 4
 
-    print(f'π ≅ {pi_estimate}')
+    print(f'π ≈ {pi_estimate}')
 
 schedule(estimate, backend='local')
