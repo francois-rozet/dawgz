@@ -87,7 +87,7 @@ Check out the [examples](examples/) and the [interface](#Interface) to discover 
 
 Currently, `dawgz.schedule` only supports two backends: `local` and `slurm`.
 
-* `local` schedules locally the submitted jobs by waiting asynchronously for dependencies to finish before submitting each job. It does not take the required resources into account.
+* `local` schedules locally the jobs by waiting asynchronously for dependencies to finish before submitting each job. It does not take the required resources into account.
 * `slurm` submits the jobs to the Slurm workload manager by generating automatically the `sbatch` submission scripts.
 
 ## Contributing
