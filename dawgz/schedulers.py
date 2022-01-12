@@ -292,7 +292,7 @@ class SlurmScheduler(Scheduler):
 
             return jobid
         except Exception as e:
-            raise SlurmSubmissionError(e)
+            return SlurmSubmissionError(e)
 
 
 
