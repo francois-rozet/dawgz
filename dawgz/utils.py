@@ -3,7 +3,7 @@ r"""Miscellaneous helpers"""
 import asyncio
 import contextvars
 
-from functools import partial
+from functools import partial, lru_cache
 from inspect import signature
 from typing import Any, Callable
 
@@ -29,6 +29,7 @@ async def to_thread(f: Callable, /, *args, **kwargs) -> Any:
     return await loop.run_in_executor(None, func_call)
 
 
+@lru_cache(typed=True)
 def accepts(f: Callable, *args, **kwargs) -> bool:
     r"""Checks whether function `f` accepts the supplied
     *args and **kwargs without errors."""
