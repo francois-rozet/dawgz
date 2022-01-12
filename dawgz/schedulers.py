@@ -202,10 +202,9 @@ class SlurmScheduler(Scheduler):
             for dep in job.dependencies
         ])
 
-        # Verify that sbatch was successful for dependencies
-        submission_errors = list(filter(lambda x: type(x) is SlurmSubmissionError, jobids))
-        if len(submission_errors) > 0:
-            raise DependencyNeverSatisfiedException(f'aborting job \'{job}\'') from submission_errors[0]
+        for jobid in jobids:
+            if isinstance(jobid, Exception):
+                raise DependencyNeverSatisfiedException(f'aborting job \'{job}\'') from jobid
 
         # Write submission file
         lines = [
@@ -301,8 +300,7 @@ class SlurmScheduler(Scheduler):
 
             return jobid
         except Exception as e:
-            return SlurmSubmissionError(e)
-
+            raise SlurmSubmissionError(f'failed submitting job \'{job}\'') from e
 
 
 class CyclicDependencyGraphError(Exception):
