@@ -11,7 +11,7 @@ from pathlib import Path
 from subprocess import run
 from typing import Any, Dict, List
 
-from .utils import to_thread, print_traces
+from .utils import comma_separated, print_traces, to_thread
 from .workflow import Job, cycles, prune as _prune
 
 
@@ -19,19 +19,32 @@ class Scheduler(ABC):
     r"""Abstract workflow scheduler"""
 
     def __init__(self):
+        super().__init__()
+
         self.submissions = {}
 
-    async def gather(self, *jobs) -> List[Any]:
-        results = await asyncio.gather(*map(self.submit, jobs))
-        await asyncio.wait(self.submissions.values())  # wait for all submitted jobs to complete
-        return results
+    async def gather(self, *jobs) -> Dict[Job, Any]:
+        await asyncio.wait(map(self.submit, jobs))
+
+        jobs = self.submissions.keys()
+        results = await asyncio.gather(*self.submissions.values())
+
+        return dict(zip(jobs, results))
 
     async def submit(self, job: Job) -> Any:
-        if job not in self.submissions:
-            self.submissions[job] = asyncio.create_task(self._submit(job))
+        if job in self.submissions:
+            task = self.submissions[job]
+        else:
+            task = self.submissions[job] = asyncio.create_task(self._process(job))
 
+        return await task
+
+    async def _process(self, job: Job) -> Any:
         try:
-            return await self.submissions[job]
+            if job.unsatisfiable:
+                raise DependencyNeverSatisfiedError(f'aborting {job}')
+
+            return await self._submit(job)
         except Exception as e:
             return e
 
@@ -57,12 +70,10 @@ def schedule(
         'slurm': SlurmScheduler,
     }.get(backend)(**kwargs)
 
-    results = asyncio.run(scheduler.gather(*jobs))
+    submissions = asyncio.run(scheduler.gather(*jobs))
+    errors = filter(lambda x: isinstance(x, Exception), submissions.values())
 
-    print_traces([
-        result for result in results
-        if isinstance(result, Exception)
-    ])
+    print_traces(errors)
 
     return scheduler
 
@@ -103,9 +114,8 @@ class LocalScheduler(Scheduler):
                 if isinstance(result, Exception):
                     if job.waitfor == 'all':
                         raise DependencyNeverSatisfiedError(f'aborting {job}') from result
-                else:
-                    if job.waitfor == 'any':
-                        break
+                elif job.waitfor == 'any':
+                    break
             else:
                 continue
             break
@@ -115,9 +125,7 @@ class LocalScheduler(Scheduler):
 
         # Execute job
         try:
-            if job.empty:
-                return None
-            elif job.array is None:
+            if job.array is None:
                 return await to_thread(job.fn)
             else:
                 return await asyncio.gather(*(
@@ -170,13 +178,6 @@ class SlurmScheduler(Scheduler):
             'timelimit': 'time',
         }
 
-        self.minimal = {
-            'cpus': 1,
-            'gpus': 0,
-            'ram': '2GB',
-            'timelimit': '15:00',
-        }
-
         # Identifier table
         self.table = {}
 
@@ -191,7 +192,7 @@ class SlurmScheduler(Scheduler):
         return identifier
 
     async def _submit(self, job: Job) -> str:
-        # Wait for dependencies to be submitted
+        # Wait for all dependencies to be submitted
         jobids = await asyncio.gather(*[
             self.submit(dep)
             for dep in job.dependencies
@@ -208,16 +209,12 @@ class SlurmScheduler(Scheduler):
             f'#SBATCH --job-name={job.name}',
         ]
 
-        if job.array is None or job.empty:
+        if job.array is not None:
+            lines.append('#SBATCH --array=' + comma_separated(job.array))
+
+        if job.array is None:
             logfile = self.path / f'{self.id(job)}.log'
         else:
-            array = job.array
-
-            if type(array) is range:
-                lines.append('#SBATCH --array=' + f'{array.start}-{array.stop-1}:{array.step}')
-            else:
-                lines.append('#SBATCH --array=' + ','.join(map(str, array)))
-
             logfile = self.path / f'{self.id(job)}_%a.log'
 
         lines.extend([f'#SBATCH --output={logfile}', '#'])
@@ -225,9 +222,6 @@ class SlurmScheduler(Scheduler):
         ## Settings
         settings = self.settings.copy()
         settings.update(job.settings)
-
-        if job.empty:
-            settings.update(self.minimal)
 
         for key, value in settings.items():
             key = self.translate.get(key, key)
@@ -241,20 +235,20 @@ class SlurmScheduler(Scheduler):
             lines.append('#')
 
         ## Dependencies
-        separator = '?' if job.waitfor == 'any' else ','
-        keywords = {
+        sep = '?' if job.waitfor == 'any' else ','
+        types = {
             'success': 'afterok',
             'failure': 'afternotok',
             'any': 'afterany',
         }
 
         deps = [
-            f'{keywords[status]}:{jobid}'
-            for jobid, (_, status) in zip(jobids, job.dependencies.items())
+            f'{types[status]}:{jobid}'
+            for status, jobid in zip(job.dependencies.values(), jobids)
         ]
 
         if deps:
-            lines.extend(['#SBATCH --dependency=' + separator.join(deps), '#'])
+            lines.extend(['#SBATCH --dependency=' + sep.join(deps), '#'])
 
         ## Convenience
         lines.extend([
@@ -264,23 +258,22 @@ class SlurmScheduler(Scheduler):
             '',
         ])
 
-        if not job.empty:
-            ## Environment
-            if job.env:
-                lines.extend([*job.env, ''])
-            elif self.env:
-                lines.extend([*self.env, ''])
+        ## Environment
+        if job.env:
+            lines.extend([*job.env, ''])
+        elif self.env:
+            lines.extend([*self.env, ''])
 
-            ## Pickle function
-            pklfile = self.path / f'{self.id(job)}.pkl'
+        ## Pickle function
+        pklfile = self.path / f'{self.id(job)}.pkl'
 
-            with open(pklfile, 'wb') as f:
-                f.write(pkl.dumps(job.fn))
+        with open(pklfile, 'wb') as f:
+            f.write(pkl.dumps(job.fn))
 
-            args = '' if job.array is None else '$SLURM_ARRAY_TASK_ID'
-            unpickle = f'python -c "import pickle; pickle.load(open(r\'{pklfile}\', \'rb\'))({args})"'
+        args = '' if job.array is None else '$SLURM_ARRAY_TASK_ID'
+        unpickle = f'python -c "import pickle; pickle.load(open(r\'{pklfile}\', \'rb\'))({args})"'
 
-            lines.extend([unpickle, ''])
+        lines.extend([unpickle, ''])
 
         ## Save
         bashfile = self.path / f'{self.id(job)}.sh'
