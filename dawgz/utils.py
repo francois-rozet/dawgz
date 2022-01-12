@@ -6,7 +6,7 @@ import traceback
 
 from functools import partial, lru_cache
 from inspect import signature
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Coroutine, Iterable
 
 
 @lru_cache(maxsize=None, typed=True)
@@ -20,6 +20,43 @@ def accepts(f: Callable, *args, **kwargs) -> bool:
         return False
     else:
         return True
+
+
+async def catch(coroutine: Coroutine) -> Any:
+    r"""Catches possible exceptions in coroutine."""
+
+    try:
+        return await coroutine
+    except Exception as e:
+        return e
+
+
+def comma_separated(integers: Iterable[int]) -> str:
+    r"""Formats integers as a comma separated list of intervals."""
+
+    integers = sorted(list(integers))
+    intervals = []
+
+    i = j = integers[0]
+
+    for k in integers[1:]:
+        if  k > j + 1:
+            intervals.append((i, j))
+            i = j = k
+        else:
+            j = k
+    else:
+        intervals.append((i, j))
+
+    fmt = lambda i, j: f'{i}' if i == j else f'{i}-{j}'
+
+    return ','.join(map(fmt, *zip(*intervals)))
+
+
+def every(conditions: List[Callable]) -> Callable:
+    r"""Combines a list of conditions into a single condition."""
+
+    return lambda *args: all(c(*args) for c in conditions)
 
 
 def print_traces(errors: Iterable[Exception]) -> None:

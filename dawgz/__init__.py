@@ -7,7 +7,7 @@ from functools import partial
 from typing import Callable, Union
 
 from .schedulers import schedule
-from .workflow import Job, leafs, roots
+from .workflow import Job, prune, leafs, roots
 
 
 def job(f: Callable = None, /, **kwargs) -> Union[Callable, Job]:
@@ -47,8 +47,3 @@ def ensure(condition: Callable) -> Callable:
         return self
 
     return decorator
-
-
-def empty(self: Job) -> Job:
-    self.f = None
-    return self
