@@ -83,12 +83,13 @@ class LocalScheduler(Scheduler):
         result = await self.submit(job)
 
         if isinstance(result, Exception):
-            if isinstance(result, DependencyNeverSatisfiedError):
-                return result
-            elif status == 'success':
-                return result
+            if isinstance(result, JobFailedError):
+                if status == 'success':
+                    return result
+                else:
+                    return None
             else:
-                return None
+                return result
         else:
             if status == 'failure':
                 return JobNotFailedError(f'{job}')
@@ -110,7 +111,7 @@ class LocalScheduler(Scheduler):
 
                 if isinstance(result, Exception):
                     if job.waitfor == 'all':
-                        raise DependencyNeverSatisfiedError(f'aborting job \'{job}\'') from result
+                        raise DependencyNeverSatisfiedError(f'aborting job {job}') from result
                 else:
                     if job.waitfor == 'any':
                         break
@@ -119,18 +120,21 @@ class LocalScheduler(Scheduler):
             break
         else:
             if job.dependencies and job.waitfor == 'any':
-                raise DependencyNeverSatisfiedError(f'aborting job \'{job}\'')
+                raise DependencyNeverSatisfiedError(f'aborting job {job}')
 
         # Execute job
-        if job.empty:
-            return None
-        elif job.array is None:
-            return await to_thread(job.fn)
-        else:
-            return await asyncio.gather(*(
-                to_thread(job.fn, i)
-                for i in job.array
-            ))
+        try:
+            if job.empty:
+                return None
+            elif job.array is None:
+                return await to_thread(job.fn)
+            else:
+                return await asyncio.gather(*(
+                    to_thread(job.fn, i)
+                    for i in job.array
+                ))
+        except Exception as e:
+            raise JobFailedError(f'{job}') from e
 
 
 class SlurmScheduler(Scheduler):
@@ -300,7 +304,7 @@ class SlurmScheduler(Scheduler):
 
             return jobid
         except Exception as e:
-            raise SlurmSubmissionError(f'failed submitting job \'{job}\'') from e
+            raise SlurmSubmissionError(f'{job}') from e
 
 
 class CyclicDependencyGraphError(Exception):
@@ -308,6 +312,10 @@ class CyclicDependencyGraphError(Exception):
 
 
 class DependencyNeverSatisfiedError(Exception):
+    pass
+
+
+class JobFailedError(Exception):
     pass
 
 
