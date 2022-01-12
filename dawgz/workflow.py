@@ -148,6 +148,24 @@ class Job(Node):
 
         self._waitfor = mode
 
+    def reduce(self, conditions: List[Callable]) -> Callable:
+        if self.array is None:
+            return lambda: all(c() for c in conditions)
+        else:
+            return lambda i: all(c(i) for c in conditions)
+
+    def require(self, condition: Callable) -> None:
+        if self.array is None:
+            assert accepts(condition), 'precondition should not expect arguments'
+        else:
+            assert accepts(condition) or accepts(condition, 0), 'precondition should expect at most one argument'
+
+            if accepts(condition):
+                c = condition
+                condition = lambda _: c()
+
+        self.preconditions.append(condition)
+
     def ensure(self, condition: Callable) -> None:
         if self.array is None:
             assert accepts(condition), 'postcondition should not expect arguments'
@@ -155,20 +173,6 @@ class Job(Node):
             assert accepts(condition, 0), 'postcondition should expect one argument'
 
         self.postconditions.append(condition)
-
-    def require(self, condition: Callable) -> None:
-        if self.array is None:
-            assert accepts(condition), 'precondition should not expect arguments'
-        else:
-            assert accepts(condition, 0), 'precondition should expect one argument'
-
-        self.preconditions.append(condition)
-
-    def reduce(self, conditions: List[Callable]) -> Callable:
-        if self.array is None:
-            return lambda: all(c() for c in conditions)
-        else:
-            return lambda i: all(c(i) for c in conditions)
 
     @lru_cache(None)
     def done(self, i: int = None) -> bool:
