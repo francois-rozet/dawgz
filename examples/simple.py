@@ -12,7 +12,6 @@ def a():
     raise Exception()
 
 @require(lambda: 2 + 2 == 2 * 2)
-@ensure(lambda: 1 + 2 + 3 == 1 * 2 * 3)
 @job
 def b():
     time.sleep(1)
