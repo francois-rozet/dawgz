@@ -33,17 +33,17 @@ def waitfor(mode: str) -> Callable:
     return decorator
 
 
-def ensure(condition: Callable) -> Callable:
+def require(condition: Callable) -> Callable:
     def decorator(self: Job) -> Job:
-        self.ensure(condition)
+        self.require(condition)
         return self
 
     return decorator
 
 
-def require(condition: Callable) -> Callable:
+def ensure(condition: Callable) -> Callable:
     def decorator(self: Job) -> Job:
-        self.require(condition)
+        self.ensure(condition)
         return self
 
     return decorator
