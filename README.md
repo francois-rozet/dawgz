@@ -22,9 +22,9 @@ $ pip install git+https://github.com/francois-rozet/dawgz
 
 ## Getting started
 
-TODO: `dawgz`'s interface is based on decorators...
+In `dawgz`, a job is a Python function decorated by the `@dawgz.job` decorator. This decorator allows to define the job's settings, like its name, whether it is a job array, the resources it needs, etc. Importantly, a job can have other jobs as dependencies, which implicitely defines a workflow graph. The `@dawgz.after` decorator is used to define such dependencies. Additionally, to ensure that the job completed successfuly, [postconditions](https://en.wikipedia.org/wiki/Postcondition) can be added with the `@dawgz.ensure` decorator.
 
-TODO: explain the example
+Finally, `dawgz` provides the `dawgz.schedule` function in order to schedule target jobs with a selected backend. This function automatically takes care of scheduling the dependency graph of the target jobs.
 
 ```python
 import glob
@@ -37,8 +37,8 @@ samples = 10000
 tasks = 10
 
 @ensure(lambda i: os.path.exists(f'pi_{i}.npy'))
-@job(cpus=2, ram='2GB', array=tasks)
-def sample(i: int):
+@job(array=tasks, cpus=2, ram='2GB')
+def sampling(i: int):
     print(f'Task {i + 1} / {tasks}')
 
     x = np.random.random(samples)
@@ -47,7 +47,7 @@ def sample(i: int):
 
     np.save(f'pi_{i}.npy', within_circle)
 
-@after(sample)
+@after(sampling)
 @job(cpus=4, ram='4GB', timelimit='15:00')
 def estimate():
     files = glob.glob('pi_*.npy')
@@ -59,21 +59,29 @@ def estimate():
 schedule(estimate, backend='local')
 ```
 
-TODO: submitting
+In the preceding example, we define two jobs: `sampling` and `estimate`. The former is a *job array*, meaning that it is executed concurrently for all values of `i = 0` up to `tasks - 1`. It also defines a postcondition verifying whether a file exists after the job's completion. If it is not the case, the job raises an `AssertionError` at runtime. The job `estimate` only starts after `sampling` succeeded.
+
+Executing this script with the `'local'` backend displays
 
 ```console
 $ python examples/pi.py
 TODO
 ```
 
-On a Slurm HPC cluster, changing the backend to `'slurm'` gives the following job queue.
+Alternatively, on a Slurm HPC cluster, changing the backend to `'slurm'` results in the following job queue.
 
-```
+```console
 $ squeue -u username
 TODO
 ```
 
-Check out the [examples](examples/) to explore the functionalities.
+Check out the [examples](examples/) and the [interface](#Interface) to discover the functionalities of `dawgz`.
+
+## Interface
+
+### Decorators
+
+* TODO
 
 ### Backends
 

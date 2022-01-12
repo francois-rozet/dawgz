@@ -1,6 +1,4 @@
-r"""
-TODO
-"""
+#!usr/bin/env python
 
 import glob
 import numpy as np
@@ -12,8 +10,8 @@ samples = 10000
 tasks = 10
 
 @ensure(lambda i: os.path.exists(f'pi_{i}.npy'))
-@job(cpus=2, ram='2GB', array=tasks)
-def sample(i: int):
+@job(array=tasks, cpus=2, ram='2GB')
+def sampling(i: int):
     print(f'Task {i + 1} / {tasks}')
 
     x = np.random.random(samples)
@@ -22,7 +20,7 @@ def sample(i: int):
 
     np.save(f'pi_{i}.npy', within_circle)
 
-@after(sample)
+@after(sampling)
 @job(cpus=4, ram='4GB', timelimit='15:00')
 def estimate():
     files = glob.glob('pi_*.npy')
