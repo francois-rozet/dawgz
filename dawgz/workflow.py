@@ -154,14 +154,6 @@ class Job(Node):
         else:
             return lambda i: all(c(i) for c in conditions)
 
-    def ensure(self, condition: Callable) -> None:
-        if self.array is None:
-            assert accepts(condition), 'postcondition should not expect arguments'
-        else:
-            assert accepts(condition, 0), 'postcondition should expect one argument'
-
-        self.postconditions.append(condition)
-
     def require(self, condition: Callable) -> None:
         if self.array is None:
             assert accepts(condition), 'precondition should not expect arguments'
@@ -173,6 +165,14 @@ class Job(Node):
                 condition = lambda _: c()
 
         self.preconditions.append(condition)
+
+    def ensure(self, condition: Callable) -> None:
+        if self.array is None:
+            assert accepts(condition), 'postcondition should not expect arguments'
+        else:
+            assert accepts(condition, 0), 'postcondition should expect one argument'
+
+        self.postconditions.append(condition)
 
     @lru_cache(None)
     def done(self, i: int = None) -> bool:
