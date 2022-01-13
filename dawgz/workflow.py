@@ -233,7 +233,7 @@ def cycles(*nodes, backward: bool = False) -> Iterator[List[Node]]:
         visited.add(node)
 
 
-def prune(*jobs) -> List[Job]:
+def prune(*jobs) -> Set[Job]:
     for job in dfs(*jobs, backward=True):
         if job.done:
             job.detach(*job.dependencies)
@@ -259,12 +259,12 @@ def prune(*jobs) -> List[Job]:
 
         if job.waitfor == 'all' and never_satisfied:
             job.unsatisfiable = True
-        elif job.waitfor == 'any' and never_satisfied and not pending:
-            job.unsatisfiable = True
         elif job.waitfor == 'any' and satisfied:
             job.detach(*pending)
+        elif job.waitfor == 'any' and never_satisfied and not pending:
+            job.unsatisfiable = True
 
-    return [
+    return {
         job for job in jobs
         if not job.done
-    ]
+    }
