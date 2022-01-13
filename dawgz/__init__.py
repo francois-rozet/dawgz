@@ -47,8 +47,3 @@ def ensure(condition: Callable) -> Callable:
         return self
 
     return decorator
-
-
-def empty(self: Job) -> Job:
-    self.f = None
-    return self

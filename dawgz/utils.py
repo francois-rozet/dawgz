@@ -6,7 +6,7 @@ import traceback
 
 from functools import partial, lru_cache
 from inspect import signature
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Coroutine, Iterable, List
 
 
 @lru_cache(maxsize=None, typed=True)
@@ -22,21 +22,44 @@ def accepts(f: Callable, *args, **kwargs) -> bool:
         return True
 
 
-def print_traces(errors: Iterable[Exception]) -> None:
-    r"""Prints the traces of a sequence of exceptions,
-    delimited by dashed lines."""
+async def awaitable(x: Any) -> Any:
+    r"""Transforms any object to an awaitable."""
 
-    traces = []
+    return x
 
-    for e in errors:
-        try:
-            raise e
-        except:
-            traces.append(traceback.format_exc())
 
-    if traces:
-        sep = '-' * 80 + '\n'
-        print(sep + sep.join(traces) + sep, end='')
+async def catch(coroutine: Coroutine) -> Any:
+    r""""Catches possible exceptions in coroutine."""
+
+    return (await asyncio.gather(coroutine, return_exceptions=True))[0]
+
+
+def comma_separated(integers: Iterable[int]) -> str:
+    r"""Formats integers as a comma separated list of intervals."""
+
+    integers = sorted(list(integers))
+    intervals = []
+
+    i = j = integers[0]
+
+    for k in integers[1:]:
+        if  k > j + 1:
+            intervals.append((i, j))
+            i = j = k
+        else:
+            j = k
+    else:
+        intervals.append((i, j))
+
+    fmt = lambda i, j: f'{i}' if i == j else f'{i}-{j}'
+
+    return ','.join(map(fmt, *zip(*intervals)))
+
+
+def every(conditions: List[Callable]) -> Callable:
+    r"""Combines a list of conditions into a single condition."""
+
+    return lambda *args: all(c(*args) for c in conditions)
 
 
 async def to_thread(f: Callable, /, *args, **kwargs) -> Any:
@@ -58,3 +81,15 @@ async def to_thread(f: Callable, /, *args, **kwargs) -> Any:
     func_call = partial(ctx.run, f, *args, **kwargs)
 
     return await loop.run_in_executor(None, func_call)
+
+
+def trace(error: Exception) -> str:
+    r"""Returns the trace of an exception."""
+
+    lines = traceback.format_exception(
+        type(error),
+        error,
+        error.__traceback__,
+    )
+
+    return ''.join(lines).strip('\n')
