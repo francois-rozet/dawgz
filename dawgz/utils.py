@@ -6,7 +6,7 @@ import traceback
 
 from functools import partial, lru_cache
 from inspect import signature
-from typing import Any, Callable, Coroutine, Iterable, List
+from typing import Any, Callable, Iterable, List
 
 
 @lru_cache(maxsize=None, typed=True)
