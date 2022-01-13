@@ -94,46 +94,46 @@ The package provides five decorators:
 
 * `@dawgz.job` registers a function as a job, optionally with parameters (name, array, resources, ...). It should always be the first (lowest) decorator. In the following example, `a` is a job with the name `'A'` and a time limit of one hour.
 
-```python
-@job(name='A', timelimit='01:00:00')
-def a():
-```
+    ```python
+    @job(name='A', timelimit='01:00:00')
+    def a():
+    ```
 
 * `@dawgz.after` adds one or more dependencies to a job. By default, the job waits for its dependencies to complete with success. The desired status can be set to `'success'` (default), `'failure'` or `'any'`. In the following example, `b` waits for `a` to complete with `'failure'`.
 
-```python
-@after(a, status='failure')
-@job
-def b():
-```
+    ```python
+    @after(a, status='failure')
+    @job
+    def b():
+    ```
 
 * `@dawgz.waitfor` declares whether the job waits for `'all'` (default) or `'any'` of its dependencies to be satisfied before starting. In the following example, `c` waits for either `a` or `b` to complete (with success).
 
-```python
-@after(a, b)
-@waitfor('any')
-@job
-def c():
-```
+    ```python
+    @after(a, b)
+    @waitfor('any')
+    @job
+    def c():
+    ```
 
 * `@dawgz.require` adds a [precondition](https://en.wikipedia.org/wiki/Preconditions) to a job, *i.e.* a condition that must be `True` prior to the execution of the job. If preconditions are not satisfied, the job is never executed. In the following example, `d` requires `tmp` to be an existing directory.
 
-```python
-@require(lambda: os.path.isdir('tmp'))
-@job
-def d():
-```
+    ```python
+    @require(lambda: os.path.isdir('tmp'))
+    @job
+    def d():
+    ```
 
 * `@dawgz.ensure` adds a [postcondition](https://en.wikipedia.org/wiki/Postconditions) to a job, *i.e.* a condition that must be `True` after the execution of the job. In the following example, `e` ensures that the file `tmp/dump.log` exists.
 
-```python
-@after(d)
-@ensure(lambda: os.path.exists('tmp/dump.log'))
-@job
-def e():
-```
+    ```python
+    @after(d)
+    @ensure(lambda: os.path.exists('tmp/dump.log'))
+    @job
+    def e():
+    ```
 
-> Traditionally, postconditions are only **necessary** indicators that the job completed with success. In `dawgz`, they are considered both necessary and **sufficient** indicators. Therefore, postconditions can be used to detect jobs that have already been executed and prune them out from the workflow graph.
+    > Traditionally, postconditions are only **necessary** indicators that the job completed with success. In `dawgz`, they are considered both necessary and **sufficient** indicators. Therefore, postconditions can be used to detect jobs that have already been executed and prune them out from the workflow graph.
 
 ### Backends
 
