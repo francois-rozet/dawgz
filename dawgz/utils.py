@@ -6,7 +6,7 @@ import traceback
 
 from functools import partial, lru_cache
 from inspect import signature
-from typing import Any, Callable, Iterable, List
+from typing import Any, Callable, Coroutine, Iterable, List
 
 
 @lru_cache(maxsize=None, typed=True)
@@ -20,6 +20,18 @@ def accepts(f: Callable, *args, **kwargs) -> bool:
         return False
     else:
         return True
+
+
+async def awaitable(x: Any) -> Any:
+    r"""Transforms any object to an awaitable."""
+
+    return x
+
+
+async def catch(coroutine: Coroutine) -> Any:
+    r""""Catches possible exceptions in coroutine."""
+
+    return (await asyncio.gather(coroutine, return_exceptions=True))[0]
 
 
 def comma_separated(integers: Iterable[int]) -> str:
@@ -50,23 +62,6 @@ def every(conditions: List[Callable]) -> Callable:
     return lambda *args: all(c(*args) for c in conditions)
 
 
-def print_traces(errors: Iterable[Exception]) -> None:
-    r"""Prints the traces of a sequence of exceptions,
-    delimited by dashed lines."""
-
-    traces = []
-
-    for e in errors:
-        try:
-            raise e
-        except:
-            traces.append(traceback.format_exc())
-
-    if traces:
-        sep = '-' * 80 + '\n'
-        print(sep + sep.join(traces) + sep, end='')
-
-
 async def to_thread(f: Callable, /, *args, **kwargs) -> Any:
     r"""Asynchronously run function `f` in a separate thread.
 
@@ -86,3 +81,15 @@ async def to_thread(f: Callable, /, *args, **kwargs) -> Any:
     func_call = partial(ctx.run, f, *args, **kwargs)
 
     return await loop.run_in_executor(None, func_call)
+
+
+def trace(error: Exception) -> str:
+    r"""Returns the trace of an exception."""
+
+    lines = traceback.format_exception(
+        type(error),
+        error,
+        error.__traceback__,
+    )
+
+    return ''.join(lines).strip('\n')

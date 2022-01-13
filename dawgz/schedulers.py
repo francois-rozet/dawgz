@@ -11,7 +11,7 @@ from pathlib import Path
 from subprocess import run
 from typing import Any, Dict, List
 
-from .utils import comma_separated, print_traces, to_thread
+from .utils import awaitable, catch, comma_separated, to_thread, trace
 from .workflow import Job, cycles, prune as _prune
 
 
@@ -23,30 +23,47 @@ class Scheduler(ABC):
 
         self.submissions = {}
 
-    async def gather(self, *jobs) -> Dict[Job, Any]:
+    @property
+    def results(self) -> Dict[Job, Any]:
+        return {
+            job: task.result()
+            for job, task in self.submissions.items()
+        }
+
+    @property
+    def errors(self) -> Dict[Job, Exception]:
+        return {
+            job: result
+            for job, result in self.results.items()
+            if isinstance(result, Exception)
+        }
+
+    @property
+    def traces(self) -> Dict[Job, str]:
+        return {
+            job: trace(error)
+            for job, error in self.errors.items()
+        }
+
+    async def wait(self, *jobs) -> None:
         await asyncio.wait(map(self.submit, jobs))
-
-        jobs = self.submissions.keys()
-        results = await asyncio.gather(*self.submissions.values())
-
-        return dict(zip(jobs, results))
+        await asyncio.wait(self.submissions.values())
 
     async def submit(self, job: Job) -> Any:
         if job in self.submissions:
             task = self.submissions[job]
         else:
-            task = self.submissions[job] = asyncio.create_task(self._process(job))
+            if job.unsatisfiable:
+                try:
+                    raise DependencyNeverSatisfiedError(f'aborting {job}')
+                except Exception as e:
+                    coroutine = awaitable(e)
+            else:
+                coroutine = self._submit(job)
+
+            task = self.submissions[job] = asyncio.create_task(catch(coroutine))
 
         return await task
-
-    async def _process(self, job: Job) -> Any:
-        try:
-            if job.unsatisfiable:
-                raise DependencyNeverSatisfiedError(f'aborting {job}')
-
-            return await self._submit(job)
-        except Exception as e:
-            return e
 
     @abstractmethod
     async def _submit(self, job: Job) -> Any:
@@ -70,10 +87,7 @@ def schedule(
         'slurm': SlurmScheduler,
     }.get(backend)(**kwargs)
 
-    submissions = asyncio.run(scheduler.gather(*jobs))
-    errors = filter(lambda x: isinstance(x, Exception), submissions.values())
-
-    print_traces(errors)
+    asyncio.run(scheduler.wait(*jobs))
 
     return scheduler
 
@@ -143,7 +157,7 @@ class SlurmScheduler(Scheduler):
         self,
         name: str = None,
         path: str = '.dawgz',
-        shell: str = None,
+        shell: str = os.environ.get('SHELL', '/bin/sh'),
         env: List[str] = [],  # cd, virtualenv, conda, etc.
         settings: Dict[str, Any] = {},
         **kwargs,
@@ -163,7 +177,7 @@ class SlurmScheduler(Scheduler):
         self.path = path.resolve()
 
         # Environment
-        self.shell = os.environ['SHELL'] if shell is None else shell
+        self.shell = shell
         self.env = env
 
         # Settings
@@ -271,19 +285,25 @@ class SlurmScheduler(Scheduler):
             f.write(pkl.dumps(job.fn))
 
         args = '' if job.array is None else '$SLURM_ARRAY_TASK_ID'
-        unpickle = f'python -c "import pickle; pickle.load(open(r\'{pklfile}\', \'rb\'))({args})"'
+        unpickle = [
+            'python << EOC',
+            'import pickle',
+            f'with open(r\'{pklfile}\', \'rb\')) as file:',
+            f'    pickle.load(file)({args})',
+            'EOC',
+        ]
 
-        lines.extend([unpickle, ''])
+        lines.extend([*unpickle, ''])
 
         ## Save
-        bashfile = self.path / f'{self.id(job)}.sh'
+        shfile = self.path / f'{self.id(job)}.sh'
 
-        with open(bashfile, 'w') as f:
+        with open(shfile, 'w') as f:
             f.write('\n'.join(lines))
 
         # Submit job
         try:
-            text = run(['sbatch', str(bashfile)], capture_output=True, check=True, text=True).stdout
+            text = run(['sbatch', str(shfile)], capture_output=True, check=True, text=True).stdout
             jobid, *_ = text.splitlines()
 
             return jobid

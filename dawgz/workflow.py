@@ -244,6 +244,9 @@ def prune(*jobs) -> Set[Job]:
                 if not condition(i)
             }
 
+        if not job.dependencies:
+            continue
+
         pending, satisfied, never_satisfied = [], [], []
 
         for dep, status in job.dependencies.items():
@@ -255,13 +258,13 @@ def prune(*jobs) -> Set[Job]:
             else:
                 pending.append(dep)
 
-        job.detach(*satisfied, *never_satisfied)
+        job.detach(*satisfied)
 
         if job.waitfor == 'all' and never_satisfied:
             job.unsatisfiable = True
         elif job.waitfor == 'any' and satisfied:
-            job.detach(*pending)
-        elif job.waitfor == 'any' and never_satisfied and not pending:
+            job.detach(*pending, *never_satisfied)
+        elif job.waitfor == 'any' and not pending:
             job.unsatisfiable = True
 
     return {
