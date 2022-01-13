@@ -22,7 +22,7 @@ $ pip install git+https://github.com/francois-rozet/dawgz
 
 ## Getting started
 
-In `dawgz`, a job is a Python function decorated by the `@dawgz.job` decorator. This decorator allows to define the job's settings, like its name, whether it is a job array, the resources it needs, etc. Importantly, a job can have other jobs as dependencies, which implicitely defines a workflow graph. The `@dawgz.after` decorator is used to define such dependencies. Additionally, to ensure that the job completed successfuly, [postconditions](https://en.wikipedia.org/wiki/Postcondition) can be added with the `@dawgz.ensure` decorator.
+In `dawgz`, a job is a Python function decorated by the `@dawgz.job` decorator. This decorator allows to define the job's parameters, like its name, whether it is a job array, the resources it needs, etc. Importantly, a job can have other jobs as dependencies, which implicitely defines a workflow graph. The `@dawgz.after` decorator is used to declare such dependencies. Additionally, to ensure that the job completed successfuly, [postconditions](https://en.wikipedia.org/wiki/Postcondition) can be added with the `@dawgz.ensure` decorator.
 
 Finally, `dawgz` provides the `dawgz.schedule` function in order to schedule target jobs with a selected backend. This function automatically takes care of scheduling the dependency graph of the target jobs.
 
@@ -90,7 +90,50 @@ Check out the [examples](examples/) and the [interface](#Interface) to discover 
 
 ### Decorators
 
-* TODO
+The package provides five decorators:
+
+* `@dawgz.job` registers a function as a job, optionally with parameters (name, array, resources, ...). It should always be the first (lowest) decorator. In the following example, `a` is a job with the name `'A'` and a time limit of one hour.
+
+```python
+@job(name='A', timelimit='01:00:00')
+def a():
+```
+
+* `@dawgz.after` adds one or more dependencies to a job. By default, the job waits for its dependencies to complete with success. The desired status can be set to `'success'` (default), `'failure'` or `'any'`. In the following example, `b` waits for `a` to complete with `'failure'`.
+
+```python
+@after(a, status='failure')
+@job
+def b():
+```
+
+* `@dawgz.waitfor` declares whether the job waits for `'all'` (default) or `'any'` of its dependencies to be satisfied before starting. In the following example, `c` waits for either `a` or `b` to complete (with success).
+
+```python
+@after(a, b)
+@waitfor('any')
+@job
+def c():
+```
+
+* `@dawgz.require` adds a [precondition](https://en.wikipedia.org/wiki/Preconditions) to a job, *i.e.* a condition that must be `True` prior to the execution of the job. If preconditions are not satisfied, the job is never executed. In the following example, `d` requires `tmp` to be an existing directory.
+
+```python
+@require(lambda: os.path.isdir('tmp'))
+@job
+def d():
+```
+
+* `@dawgz.ensure` adds a [postcondition](https://en.wikipedia.org/wiki/Postconditions) to a job, *i.e.* a condition that must be `True` after the execution of the job. In the following example, `e` ensures that the file `tmp/dump.log` exists.
+
+```python
+@after(d)
+@ensure(lambda: os.path.exists('tmp/dump.log'))
+@job
+def e():
+```
+
+> Traditionally, postconditions are only **necessary** indicators that the job completed with success. In `dawgz`, they are considered both necessary and **sufficient** indicators. Therefore, postconditions can be used to detect jobs that have already been executed and prune them out from the workflow graph.
 
 ### Backends
 
@@ -98,7 +141,3 @@ Currently, `dawgz.schedule` only supports two backends: `local` and `slurm`.
 
 * `local` schedules locally the jobs by waiting asynchronously for dependencies to finish before submitting each job. It does not take the required resources into account.
 * `slurm` submits the jobs to the Slurm workload manager by generating automatically the `sbatch` submission scripts.
-
-## Contributing
-
-TODO
