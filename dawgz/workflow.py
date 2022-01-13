@@ -279,7 +279,11 @@ def prune(*jobs) -> List[Job]:
         if done:
             job.detach(*done)
             if len(job.dependencies) == 0:
-                _jobs.remove(job)
+                if job in _jobs:
+                    _jobs.remove(job)
+                for j in dfs(job):
+                    if j in _jobs:
+                        _jobs.remove(j)
 
     return [
         job for job in _jobs
