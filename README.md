@@ -59,7 +59,7 @@ def estimate():
 schedule(estimate, backend='local')
 ```
 
-In the preceding example, we define two jobs: `sampling` and `estimate`. The former is a *job array*, meaning that it is executed concurrently for all values of `i = 0` up to `tasks - 1`. It also defines a postcondition verifying whether a file exists after the job's completion. If it is not the case, the job raises an `AssertionError` at runtime. The job `estimate` only starts after `sampling` succeeded.
+In the preceding example, we define two jobs: `generate` and `estimate`. The former is a *job array*, meaning that it is executed concurrently for all values of `i = 0` up to `tasks - 1`. It also defines a postcondition verifying whether a file exists after the job's completion. If it is not the case, the job raises an `AssertionError` at runtime. The job `estimate` only starts after `generate` succeeded.
 
 Executing this script with the `'local'` backend displays
 
