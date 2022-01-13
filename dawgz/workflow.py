@@ -237,7 +237,7 @@ def prune(*jobs) -> Set[Job]:
     for job in dfs(*jobs, backward=True):
         if job.done:
             job.detach(*job.dependencies)
-        elif job.array is not None:
+        elif job.array is not None and job.postconditions:
             condition = every(job.postconditions)
             job.array = {
                 i for i in job.array
