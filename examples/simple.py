@@ -29,16 +29,16 @@ def c():
 finished = [True] * 100
 finished[42] = False
 
-@after(a, status='any')
-@require(lambda: type(finished) is list)
+@after(b)
 @require(lambda i: i < len(finished))
+@require(lambda: type(finished) is list)
 @ensure(lambda i: finished[i])
 @job(array=100)
 def d(i: int):
     print(f'd{i}')
     finished[i] = True
 
-@after(b, d)
+@after(a, d)
 @waitfor('any')
 @job
 def e():
