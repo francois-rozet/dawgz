@@ -1,13 +1,13 @@
 r"""Directed Acyclic Workflow Graph Scheduling"""
 
-__version__ = '0.1.8'
+__version__ = '0.1.9'
 
 
 from functools import partial
 from typing import Callable, Union
 
 from .schedulers import schedule
-from .workflow import Job, leafs
+from .workflow import Job, leafs, roots
 
 
 def job(f: Callable = None, /, **kwargs) -> Union[Callable, Job]:
@@ -33,14 +33,17 @@ def waitfor(mode: str) -> Callable:
     return decorator
 
 
-def ensure(condition: Callable, when: str = 'after') -> Callable:
+def require(condition: Callable) -> Callable:
     def decorator(self: Job) -> Job:
-        self.ensure(condition, when)
+        self.require(condition)
         return self
 
     return decorator
 
 
-def empty(self: Job) -> Job:
-    self.f = None
-    return self
+def ensure(condition: Callable) -> Callable:
+    def decorator(self: Job) -> Job:
+        self.ensure(condition)
+        return self
+
+    return decorator

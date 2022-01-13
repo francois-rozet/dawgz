@@ -11,16 +11,71 @@ from pathlib import Path
 from subprocess import run
 from typing import Any, Dict, List
 
-from .utils import to_thread
+from .utils import awaitable, catch, comma_separated, to_thread, trace
 from .workflow import Job, cycles, prune as _prune
+
+
+class Scheduler(ABC):
+    r"""Abstract workflow scheduler"""
+
+    def __init__(self):
+        super().__init__()
+
+        self.submissions = {}
+
+    @property
+    def results(self) -> Dict[Job, Any]:
+        return {
+            job: task.result()
+            for job, task in self.submissions.items()
+        }
+
+    @property
+    def errors(self) -> Dict[Job, Exception]:
+        return {
+            job: result
+            for job, result in self.results.items()
+            if isinstance(result, Exception)
+        }
+
+    @property
+    def traces(self) -> Dict[Job, str]:
+        return {
+            job: trace(error)
+            for job, error in self.errors.items()
+        }
+
+    async def wait(self, *jobs) -> None:
+        await asyncio.wait(map(self.submit, jobs))
+        await asyncio.wait(self.submissions.values())
+
+    async def submit(self, job: Job) -> Any:
+        if job in self.submissions:
+            task = self.submissions[job]
+        else:
+            if job.unsatisfiable:
+                try:
+                    raise DependencyNeverSatisfiedError(f'aborting {job}')
+                except Exception as e:
+                    coroutine = awaitable(e)
+            else:
+                coroutine = self._submit(job)
+
+            task = self.submissions[job] = asyncio.create_task(catch(coroutine))
+
+        return await task
+
+    @abstractmethod
+    async def _submit(self, job: Job) -> Any:
+        pass
 
 
 def schedule(
     *jobs,
-    backend: str = None,
-    prune: bool = True,
+    backend: str,
+    prune: bool = False,
     **kwargs,
-) -> List[Any]:
+) -> Scheduler:
     for cycle in cycles(*jobs, backward=True):
         raise CyclicDependencyGraphError(' <- '.join(map(str, cycle)))
 
@@ -30,29 +85,11 @@ def schedule(
     scheduler = {
         'local': LocalScheduler,
         'slurm': SlurmScheduler,
-    }.get(backend, LocalScheduler)(**kwargs)
+    }.get(backend)(**kwargs)
 
-    return asyncio.run(scheduler.gather(*jobs))
+    asyncio.run(scheduler.wait(*jobs))
 
-
-class Scheduler(ABC):
-    r"""Abstract workflow scheduler"""
-
-    def __init__(self):
-        self.submissions = {}
-
-    async def gather(self, *jobs) -> List[Any]:
-        return await asyncio.gather(*map(self.submit, jobs))
-
-    async def submit(self, job: Job) -> Any:
-        if job not in self.submissions:
-            self.submissions[job] = asyncio.create_task(self._submit(job))
-
-        return await self.submissions[job]
-
-    @abstractmethod
-    async def _submit(self, job: Job) -> Any:
-        pass
+    return scheduler
 
 
 class LocalScheduler(Scheduler):
@@ -62,13 +99,16 @@ class LocalScheduler(Scheduler):
         result = await self.submit(job)
 
         if isinstance(result, Exception):
-            if status == 'success':
-                return result
+            if isinstance(result, JobFailedError):
+                if status == 'success':
+                    return result
+                else:
+                    return None
             else:
-                return None
+                return result
         else:
             if status == 'failure':
-                raise JobNotFailedException(f'{job}')
+                return JobNotFailedError(f'{job}')
             else:
                 return result
 
@@ -87,30 +127,27 @@ class LocalScheduler(Scheduler):
 
                 if isinstance(result, Exception):
                     if job.waitfor == 'all':
-                        raise DependencyNeverSatisfiedException(f'aborting job {job}') from result
-                else:
-                    if job.waitfor == 'any':
-                        break
+                        raise DependencyNeverSatisfiedError(f'aborting {job}') from result
+                elif job.waitfor == 'any':
+                    break
             else:
                 continue
             break
         else:
             if job.dependencies and job.waitfor == 'any':
-                raise DependencyNeverSatisfiedException(f'aborting job {job}')
+                raise DependencyNeverSatisfiedError(f'aborting {job}')
 
         # Execute job
         try:
-            if job.empty:
-                return None
-            elif job.array is None:
+            if job.array is None:
                 return await to_thread(job.fn)
             else:
                 return await asyncio.gather(*(
                     to_thread(job.fn, i)
                     for i in job.array
                 ))
-        except Exception as error:
-            return error
+        except Exception as e:
+            raise JobFailedError(f'{job}') from e
 
 
 class SlurmScheduler(Scheduler):
@@ -120,7 +157,7 @@ class SlurmScheduler(Scheduler):
         self,
         name: str = None,
         path: str = '.dawgz',
-        shell: str = None,
+        shell: str = os.environ.get('SHELL', '/bin/sh'),
         env: List[str] = [],  # cd, virtualenv, conda, etc.
         settings: Dict[str, Any] = {},
         **kwargs,
@@ -133,13 +170,14 @@ class SlurmScheduler(Scheduler):
             name = datetime.now().strftime('%y%m%d_%H%M%S')
 
         path = Path(path) / name
+        assert not path.exists(), f'{path} already exists'
         path.mkdir(parents=True, exist_ok=True)
 
         self.name = name
         self.path = path.resolve()
 
         # Environment
-        self.shell = os.environ['SHELL'] if shell is None else shell
+        self.shell = shell
         self.env = env
 
         # Settings
@@ -150,14 +188,8 @@ class SlurmScheduler(Scheduler):
             'cpus': 'cpus-per-task',
             'gpus': 'gpus-per-task',
             'ram': 'mem',
+            'memory': 'mem',
             'timelimit': 'time',
-        }
-
-        self.minimal = {
-            'cpus': 1,
-            'gpus': 0,
-            'ram': '2GB',
-            'timelimit': '15:00',
         }
 
         # Identifier table
@@ -174,11 +206,15 @@ class SlurmScheduler(Scheduler):
         return identifier
 
     async def _submit(self, job: Job) -> str:
-        # Wait for dependencies to be submitted
+        # Wait for all dependencies to be submitted
         jobids = await asyncio.gather(*[
             self.submit(dep)
             for dep in job.dependencies
         ])
+
+        for jobid in jobids:
+            if isinstance(jobid, Exception):
+                raise DependencyNeverSatisfiedError(f'aborting {job}') from jobid
 
         # Write submission file
         lines = [
@@ -187,26 +223,19 @@ class SlurmScheduler(Scheduler):
             f'#SBATCH --job-name={job.name}',
         ]
 
-        if job.array is None or job.empty:
-            logfile = self.path / f'{self.id(job)}_%j.log'
+        if job.array is not None:
+            lines.append('#SBATCH --array=' + comma_separated(job.array))
+
+        if job.array is None:
+            logfile = self.path / f'{self.id(job)}.log'
         else:
-            array = job.array
-
-            if type(array) is range:
-                lines.append('#SBATCH --array=' + f'{array.start}-{array.stop-1}:{array.step}')
-            else:
-                lines.append('#SBATCH --array=' + ','.join(map(str, array)))
-
-            logfile = self.path / f'{self.id(job)}_%j_%a.log'
+            logfile = self.path / f'{self.id(job)}_%a.log'
 
         lines.extend([f'#SBATCH --output={logfile}', '#'])
 
         ## Settings
         settings = self.settings.copy()
         settings.update(job.settings)
-
-        if job.empty:
-            settings.update(self.minimal)
 
         for key, value in settings.items():
             key = self.translate.get(key, key)
@@ -220,20 +249,20 @@ class SlurmScheduler(Scheduler):
             lines.append('#')
 
         ## Dependencies
-        separator = '?' if job.waitfor == 'any' else ','
-        keywords = {
+        sep = '?' if job.waitfor == 'any' else ','
+        types = {
             'success': 'afterok',
             'failure': 'afternotok',
             'any': 'afterany',
         }
 
         deps = [
-            f'{keywords[status]}:{jobid}'
-            for jobid, (_, status) in zip(jobids, job.dependencies.items())
+            f'{types[status]}:{jobid}'
+            for status, jobid in zip(job.dependencies.values(), jobids)
         ]
 
         if deps:
-            lines.extend(['#SBATCH --dependency=' + separator.join(deps), '#'])
+            lines.extend(['#SBATCH --dependency=' + sep.join(deps), '#'])
 
         ## Convenience
         lines.extend([
@@ -243,44 +272,60 @@ class SlurmScheduler(Scheduler):
             '',
         ])
 
-        if not job.empty:
-            ## Environment
-            if job.env:
-                lines.extend([*job.env, ''])
-            elif self.env:
-                lines.extend([*self.env, ''])
+        ## Environment
+        if job.env:
+            lines.extend([*job.env, ''])
+        elif self.env:
+            lines.extend([*self.env, ''])
 
-            ## Pickle function
-            pklfile = self.path / f'{self.id(job)}.pkl'
+        ## Pickle function
+        pklfile = self.path / f'{self.id(job)}.pkl'
 
-            with open(pklfile, 'wb') as f:
-                f.write(pkl.dumps(job.fn))
+        with open(pklfile, 'wb') as f:
+            f.write(pkl.dumps(job.fn))
 
-            args = '' if job.array is None else '$SLURM_ARRAY_TASK_ID'
-            unpickle = f'python -c "import pickle; pickle.load(open(r\'{pklfile}\', \'rb\'))({args})"'
+        args = '' if job.array is None else '$SLURM_ARRAY_TASK_ID'
+        unpickle = [
+            'python << EOC',
+            'import pickle',
+            f'with open(r\'{pklfile}\', \'rb\')) as file:',
+            f'    pickle.load(file)({args})',
+            'EOC',
+        ]
 
-            lines.extend([unpickle, ''])
+        lines.extend([*unpickle, ''])
 
         ## Save
-        bashfile = self.path / f'{self.id(job)}.sh'
+        shfile = self.path / f'{self.id(job)}.sh'
 
-        with open(bashfile, 'w') as f:
+        with open(shfile, 'w') as f:
             f.write('\n'.join(lines))
 
         # Submit job
-        text = run(['sbatch', str(bashfile)], capture_output=True, check=True, text=True).stdout
-        jobid, *_ = text.splitlines()
+        try:
+            text = run(['sbatch', str(shfile)], capture_output=True, check=True, text=True).stdout
+            jobid, *_ = text.splitlines()
 
-        return jobid
+            return jobid
+        except Exception as e:
+            raise JobSubmissionError(f'could not submit {job}') from e
 
 
 class CyclicDependencyGraphError(Exception):
     pass
 
 
-class DependencyNeverSatisfiedException(Exception):
+class DependencyNeverSatisfiedError(Exception):
     pass
 
 
-class JobNotFailedException(Exception):
+class JobFailedError(Exception):
+    pass
+
+
+class JobNotFailedError(Exception):
+    pass
+
+
+class JobSubmissionError(Exception):
     pass
