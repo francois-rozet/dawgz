@@ -263,16 +263,6 @@ def prune(*jobs) -> List[Job]:
 
         done = {
             dep for dep, status in job.dependencies.items()
-            if dep.done() and status != 'failure'
-        }
-
-        if job.waitfor == 'any' and done:
-            job.detach(*job.dependencies)
-        elif job.waitfor == 'all':
-            job.detach(*done)
-
-        done = {
-            dep for dep, status in job.dependencies.items()
             if dep.done() and status == 'failure'
         }
 
@@ -281,9 +271,19 @@ def prune(*jobs) -> List[Job]:
             if len(job.dependencies) == 0:
                 if job in _jobs:
                     _jobs.remove(job)
-                for j in dfs(job):
+                for j in dfs(job):  # Remove failed branch
                     if j in _jobs:
                         _jobs.remove(j)
+
+        done = {
+            dep for dep, status in job.dependencies.items()
+            if dep.done() and status != 'failure'
+        }
+
+        if job.waitfor == 'any' and done:
+            job.detach(*job.dependencies)
+        elif job.waitfor == 'all':
+            job.detach(*done)
 
     return [
         job for job in _jobs
