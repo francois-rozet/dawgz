@@ -150,7 +150,7 @@ class Job(Node):
             assert accepts(condition), 'precondition should not expect arguments'
         else:
             assert accepts(condition) or accepts(condition, 0), \
-                   'precondition should expect at most one argument'
+                'precondition should expect at most one argument'
 
             if accepts(condition):
                 c = condition
