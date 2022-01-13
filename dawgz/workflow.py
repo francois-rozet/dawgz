@@ -60,9 +60,8 @@ class Job(Node):
     ):
         super().__init__(f.__name__ if name is None else name)
 
-        # Private property initialization
-        self._array = None
-        self._waitfor = 'all'  # Default dependency mode
+        if type(array) is int:
+            array = range(array)
 
         if type(array) is int:
             array = range(array)
@@ -83,6 +82,9 @@ class Job(Node):
         self.settings = settings.copy()
         self.settings.update(kwargs)
 
+        # Dependencies
+        self._waitfor = 'all'
+
         # Conditions
         self.preconditions = []
         self.postconditions = []
@@ -95,9 +97,9 @@ class Job(Node):
         post = self.reduce(self.postconditions)
 
         def call(*args) -> Any:
-            assert pre(*args), f'job {name} does not satisfy its preconditions'
+            assert pre(*args), f'{name} does not satisfy its preconditions'
             result = f(*args)
-            assert post(*args), f'job {name} does not satisfy its postconditions'
+            assert post(*args), f'{name} does not satisfy its postconditions'
 
             return result
 
@@ -143,6 +145,19 @@ class Job(Node):
 
         self._waitfor = mode
 
+    def require(self, condition: Callable) -> None:
+        if self.array is None:
+            assert accepts(condition), 'precondition should not expect arguments'
+        else:
+            assert accepts(condition) or accepts(condition, 0), \
+                   'precondition should expect at most one argument'
+
+            if accepts(condition):
+                c = condition
+                condition = lambda _: c()
+
+        self.preconditions.append(condition)
+
     def ensure(self, condition: Callable) -> None:
         if self.array is None:
             assert accepts(condition), 'postcondition should not expect arguments'
@@ -150,14 +165,6 @@ class Job(Node):
             assert accepts(condition, 0), 'postcondition should expect one argument'
 
         self.postconditions.append(condition)
-
-    def require(self, condition: Callable) -> None:
-        if self.array is None:
-            assert accepts(condition), 'precondition should not expect arguments'
-        else:
-            assert accepts(condition, 0), 'precondition should expect one argument'
-
-        self.preconditions.append(condition)
 
     def reduce(self, conditions: List[Callable]) -> Callable:
         if self.array is None:
@@ -241,6 +248,7 @@ def cycles(*nodes, backward: bool = False) -> Iterator[List[Node]]:
 
 
 def prune(*jobs) -> List[Job]:
+    _jobs = set(jobs)
     for job in dfs(*jobs, backward=True):
         if job.done():
             job.detach(*job.dependencies)
@@ -263,7 +271,17 @@ def prune(*jobs) -> List[Job]:
         elif job.waitfor == 'all':
             job.detach(*done)
 
+        done = {
+            dep for dep, status in job.dependencies.items()
+            if dep.done() and status == 'failure'
+        }
+
+        if done:
+            job.detach(*done)
+            if len(job.dependencies) == 0:
+                _jobs.remove(job)
+
     return [
-        job for job in jobs
+        job for job in _jobs
         if not job.done()
     ]

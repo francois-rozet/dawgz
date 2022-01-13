@@ -4,6 +4,7 @@ import asyncio
 import cloudpickle as pkl
 import os
 import shutil
+import traceback
 
 from abc import ABC, abstractmethod
 from datetime import datetime
@@ -15,12 +16,50 @@ from .utils import to_thread
 from .workflow import Job, cycles, prune as _prune
 
 
+class Scheduler(ABC):
+    r"""Abstract workflow scheduler"""
+
+    def __init__(self):
+        self.submissions = {}
+
+    async def gather(self, *jobs) -> List[Any]:
+        results = await asyncio.gather(*map(self.submit, jobs))
+
+        collect = []
+
+        for result in results:
+            if isinstance(result, Exception):
+                try:
+                    raise result
+                except:
+                    collect.append(traceback.format_exc())
+
+        if collect:
+            sep = '-' * 80 + '\n'
+            print(sep + sep.join(collect) + sep, end='')
+
+        return results
+
+    async def submit(self, job: Job) -> Any:
+        if job not in self.submissions:
+            self.submissions[job] = asyncio.create_task(self._submit(job))
+
+        try:
+            return await self.submissions[job]
+        except Exception as e:
+            return e
+
+    @abstractmethod
+    async def _submit(self, job: Job) -> Any:
+        pass
+
+
 def schedule(
     *jobs,
     backend: str,
-    prune: bool = True,
+    prune: bool = False,
     **kwargs,
-) -> List[Any]:
+) -> Scheduler:
     for cycle in cycles(*jobs, backward=True):
         raise CyclicDependencyGraphError(' <- '.join(map(str, cycle)))
 
@@ -32,27 +71,9 @@ def schedule(
         'slurm': SlurmScheduler,
     }.get(backend)(**kwargs)
 
-    return asyncio.run(scheduler.gather(*jobs))
+    asyncio.run(scheduler.gather(*jobs))
 
-
-class Scheduler(ABC):
-    r"""Abstract workflow scheduler"""
-
-    def __init__(self):
-        self.submissions = {}
-
-    async def gather(self, *jobs) -> List[Any]:
-        return await asyncio.gather(*map(self.submit, jobs))
-
-    async def submit(self, job: Job) -> Any:
-        if job not in self.submissions:
-            self.submissions[job] = asyncio.create_task(self._submit(job))
-
-        return await self.submissions[job]
-
-    @abstractmethod
-    async def _submit(self, job: Job) -> Any:
-        pass
+    return scheduler
 
 
 class LocalScheduler(Scheduler):
@@ -62,13 +83,16 @@ class LocalScheduler(Scheduler):
         result = await self.submit(job)
 
         if isinstance(result, Exception):
-            if status == 'success':
-                return result
+            if isinstance(result, JobFailedError):
+                if status == 'success':
+                    return result
+                else:
+                    return None
             else:
-                return None
+                return result
         else:
             if status == 'failure':
-                raise JobNotFailedException(f'{job}')
+                return JobNotFailedError(f'{job}')
             else:
                 return result
 
@@ -87,7 +111,7 @@ class LocalScheduler(Scheduler):
 
                 if isinstance(result, Exception):
                     if job.waitfor == 'all':
-                        raise DependencyNeverSatisfiedException(f'aborting job {job}') from result
+                        raise DependencyNeverSatisfiedError(f'aborting {job}') from result
                 else:
                     if job.waitfor == 'any':
                         break
@@ -96,7 +120,7 @@ class LocalScheduler(Scheduler):
             break
         else:
             if job.dependencies and job.waitfor == 'any':
-                raise DependencyNeverSatisfiedException(f'aborting job {job}')
+                raise DependencyNeverSatisfiedError(f'aborting {job}')
 
         # Execute job
         try:
@@ -107,8 +131,8 @@ class LocalScheduler(Scheduler):
                     to_thread(job.fn, i)
                     for i in job.array
                 ))
-        except Exception as error:
-            return error
+        except Exception as e:
+            raise JobFailedError(f'{job}') from e
 
 
 class SlurmScheduler(Scheduler):
@@ -131,6 +155,7 @@ class SlurmScheduler(Scheduler):
             name = datetime.now().strftime('%y%m%d_%H%M%S')
 
         path = Path(path) / name
+        assert not path.exists(), f'{path} already exists'
         path.mkdir(parents=True, exist_ok=True)
 
         self.name = name
@@ -148,6 +173,7 @@ class SlurmScheduler(Scheduler):
             'cpus': 'cpus-per-task',
             'gpus': 'gpus-per-task',
             'ram': 'mem',
+            'memory': 'mem',
             'timelimit': 'time',
         }
 
@@ -170,6 +196,10 @@ class SlurmScheduler(Scheduler):
             self.submit(dep)
             for dep in job.dependencies
         ])
+
+        for jobid in jobids:
+            if isinstance(jobid, Exception):
+                raise DependencyNeverSatisfiedError(f'aborting {job}') from jobid
 
         # Write submission file
         lines = [
@@ -255,19 +285,30 @@ class SlurmScheduler(Scheduler):
             f.write('\n'.join(lines))
 
         # Submit job
-        text = run(['sbatch', str(bashfile)], capture_output=True, check=True, text=True).stdout
-        jobid, *_ = text.splitlines()
+        try:
+            text = run(['sbatch', str(bashfile)], capture_output=True, check=True, text=True).stdout
+            jobid, *_ = text.splitlines()
 
-        return jobid
+            return jobid
+        except Exception as e:
+            raise JobSubmissionError(f'could not submit {job}') from e
 
 
 class CyclicDependencyGraphError(Exception):
     pass
 
 
-class DependencyNeverSatisfiedException(Exception):
+class DependencyNeverSatisfiedError(Exception):
     pass
 
 
-class JobNotFailedException(Exception):
+class JobFailedError(Exception):
+    pass
+
+
+class JobNotFailedError(Exception):
+    pass
+
+
+class JobSubmissionError(Exception):
     pass
