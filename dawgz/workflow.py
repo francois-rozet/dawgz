@@ -82,6 +82,7 @@ class Job(Node):
 
         # Dependencies
         self._waitfor = 'all'
+        self.unsatisfied = set()
 
         # Conditions
         self.preconditions = []
@@ -172,6 +173,16 @@ class Job(Node):
         else:
             return all(map(condition, self.array))
 
+    @property
+    def satisfiable(self) -> bool:
+        if self.unsatisfied:
+            if self.waitfor == 'all':
+                return False
+            elif self.waitfor == 'any' and not self.dependencies:
+                return False
+
+        return True
+
 
 def dfs(*nodes, backward: bool = False) -> Iterator[Node]:
     queue = list(nodes)
@@ -244,28 +255,24 @@ def prune(*jobs) -> Set[Job]:
                 if not condition(i)
             }
 
-        if not job.dependencies:
-            continue
-
-        pending, satisfied, never_satisfied = [], [], []
+        satisfied, unsatisfied, pending = [], [], []
 
         for dep, status in job.dependencies.items():
             if dep.done:
-                if status == 'failure':
-                    never_satisfied.append(dep)
+                if status == 'failure':  # first-order unsatisfiability
+                    unsatisfied.append(dep)
                 else:
                     satisfied.append(dep)
             else:
                 pending.append(dep)
 
-        job.detach(*satisfied)
+        job.detach(*satisfied, *unsatisfied)
 
-        if job.waitfor == 'all' and never_satisfied:
-            job.unsatisfiable = True
-        elif job.waitfor == 'any' and satisfied:
-            job.detach(*pending, *never_satisfied)
-        elif job.waitfor == 'any' and not pending:
-            job.unsatisfiable = True
+        if job.waitfor == 'any' and satisfied:
+            job.detach(*pending)
+            job.unsatisfied.clear()
+        else:
+            job.unsatisfied.update(unsatisfied)
 
     return {
         job for job in jobs

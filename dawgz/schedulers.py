@@ -53,7 +53,7 @@ class Scheduler(ABC):
         if job in self.submissions:
             task = self.submissions[job]
         else:
-            if job.unsatisfiable:
+            if not job.satisfiable:
                 try:
                     raise DependencyNeverSatisfiedError(f'aborting {job}')
                 except Exception as e:
