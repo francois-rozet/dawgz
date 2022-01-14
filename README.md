@@ -4,7 +4,7 @@ Would you like fully reproducible and reusable workflows that run on HPC cluster
 
 The `dawgz` package allows you to define and execute complex workflows, directly in Python. It provides a lightweight interface that enables to define jobs along with their dependencies, requirements, postconditions, etc. After defining the workflow, you can schedule target jobs in a single line of code and all their dependencies will be automatically scheduled as well. Importantly, the scheduling backend can be changed with a single parameter, which enables to execute the same workflow on your personal computer and HPC clusters.
 
-> `dawgz` should be pronounced *dogs* :dog:
+> `dawgz` is the successor of [`awflow`](https://github.com/JoeriHermans/awflow)
 
 ## Installation
 
