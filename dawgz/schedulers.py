@@ -38,13 +38,6 @@ class Scheduler(ABC):
             if isinstance(result, Exception)
         }
 
-    @property
-    def traces(self) -> Dict[Job, str]:
-        return {
-            job: trace(error)
-            for job, error in self.errors.items()
-        }
-
     async def wait(self, *jobs) -> None:
         await asyncio.wait(map(self.submit, jobs))
         await asyncio.wait(self.submissions.values())
@@ -74,6 +67,7 @@ def schedule(
     *jobs,
     backend: str,
     prune: bool = False,
+    warn: bool = True,
     **kwargs,
 ) -> Scheduler:
     for cycle in cycles(*jobs, backward=True):
@@ -88,6 +82,15 @@ def schedule(
     }.get(backend)(**kwargs)
 
     asyncio.run(scheduler.wait(*jobs))
+
+    if warn:
+        traces = list(map(trace, scheduler.errors.values()))
+        if traces:
+            traces.insert(0, 'DAWGZWarning: errors occurred while scheduling')
+
+            sep = '\n' + '-' * 80 + '\n'
+            text = sep.join(traces)
+            print(text, end=sep)
 
     return scheduler
 
