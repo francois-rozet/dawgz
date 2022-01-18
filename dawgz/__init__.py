@@ -1,8 +1,5 @@
 r"""Directed Acyclic Workflow Graph Scheduling"""
 
-__version__ = '0.2.2'
-
-
 from functools import partial
 from typing import Callable, Union
 
@@ -28,14 +25,6 @@ def after(*deps, status: str = 'success') -> Callable:
 def waitfor(mode: str) -> Callable:
     def decorator(self: Job) -> Job:
         self.waitfor = mode
-        return self
-
-    return decorator
-
-
-def require(condition: Callable) -> Callable:
-    def decorator(self: Job) -> Job:
-        self.require(condition)
         return self
 
     return decorator

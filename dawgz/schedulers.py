@@ -7,11 +7,13 @@ import shutil
 
 from abc import ABC, abstractmethod
 from datetime import datetime
+from functools import partial
 from pathlib import Path
+from random import random
 from subprocess import run
 from typing import Any, Dict, List
 
-from .utils import awaitable, catch, comma_separated, to_thread, trace
+from .utils import awaitable, catch, comma_separated, eprint, gather, to_thread, trace
 from .workflow import Job, cycles, prune as _prune
 
 
@@ -21,7 +23,16 @@ class Scheduler(ABC):
     def __init__(self):
         super().__init__()
 
+        self.table = {}
         self.submissions = {}
+
+    def tag(self, job: Job) -> str:
+        if job in self.table:
+            i = self.table[job]
+        else:
+            i = self.table[job] = len(self.table)
+
+        return f'{job.name}_{i:03d}'
 
     @property
     def results(self) -> Dict[Job, Any]:
@@ -46,20 +57,26 @@ class Scheduler(ABC):
         if job in self.submissions:
             task = self.submissions[job]
         else:
-            if not job.satisfiable:
-                try:
-                    raise DependencyNeverSatisfiedError(f'aborting {job}')
-                except Exception as e:
-                    coroutine = awaitable(e)
-            else:
-                coroutine = self._submit(job)
-
-            task = self.submissions[job] = asyncio.create_task(catch(coroutine))
+            task = self.submissions[job] = asyncio.create_task(catch(self._submit(job)))
 
         return await task
 
-    @abstractmethod
     async def _submit(self, job: Job) -> Any:
+        if job.satisfiable:
+            await self.satisfy(job)
+        else:
+            raise DependencyNeverSatisfiedError(f'aborting {job}')
+
+        _ = self.tag(job)
+
+        return await self.exec(job)
+
+    @abstractmethod
+    async def satisfy(self, job: Job) -> None:
+        pass
+
+    @abstractmethod
+    async def exec(self, job: Job) -> Any:
         pass
 
 
@@ -77,7 +94,8 @@ def schedule(
         jobs = _prune(*jobs)
 
     scheduler = {
-        'local': LocalScheduler,
+        'async': AsyncScheduler,
+        'dummy': DummyScheduler,
         'slurm': SlurmScheduler,
     }.get(backend)(**kwargs)
 
@@ -88,37 +106,26 @@ def schedule(
         if traces:
             traces.insert(0, 'DAWGZWarning: errors occurred while scheduling')
 
-            sep = '\n' + '-' * 80 + '\n'
+            length = max(
+                len(line)
+                for trce in traces
+                for line in trce.splitlines()
+            )
+
+            sep = '\n' + '-' * length + '\n'
             text = sep.join(traces)
-            print(text, end=sep)
+
+            eprint(text, end=sep)
 
     return scheduler
 
 
-class LocalScheduler(Scheduler):
-    r"""Local scheduler"""
+class AsyncScheduler(Scheduler):
+    r"""Asynchronous scheduler"""
 
-    async def condition(self, job: Job, status: str) -> Any:
-        result = await self.submit(job)
-
-        if isinstance(result, Exception):
-            if isinstance(result, JobFailedError):
-                if status == 'success':
-                    return result
-                else:
-                    return None
-            else:
-                return result
-        else:
-            if status == 'failure':
-                return JobNotFailedError(f'{job}')
-            else:
-                return result
-
-    async def _submit(self, job: Job) -> Any:
-        # Wait for (all or any) dependencies to complete
+    async def satisfy(self, job: Job) -> None:
         pending = {
-            asyncio.create_task(self.condition(dep, status))
+            asyncio.create_task(gather(self.submit(dep), status))
             for dep, status in job.dependencies.items()
         }
 
@@ -126,7 +133,12 @@ class LocalScheduler(Scheduler):
             done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
 
             for task in done:
-                result = task.result()
+                result, status = task.result()
+
+                if isinstance(result, JobFailedError) and status != 'success':
+                    result = None
+                elif not isinstance(result, Exception) and status == 'failure':
+                    result = JobNotFailedError(f'{job}')
 
                 if isinstance(result, Exception):
                     if job.waitfor == 'all':
@@ -140,17 +152,23 @@ class LocalScheduler(Scheduler):
             if job.dependencies and job.waitfor == 'any':
                 raise DependencyNeverSatisfiedError(f'aborting {job}')
 
-        # Execute job
+    async def exec(self, job: Job) -> Any:
         try:
             if job.array is None:
                 return await to_thread(job.fn)
             else:
-                return await asyncio.gather(*(
-                    to_thread(job.fn, i)
-                    for i in job.array
-                ))
+                return await gather(*map(partial(to_thread, job.fn), job.array))
         except Exception as e:
             raise JobFailedError(f'{job}') from e
+
+
+class DummyScheduler(AsyncScheduler):
+    r"""Dummy scheduler"""
+
+    async def exec(self, job: Job) -> None:
+        print(f'START {job}')
+        await asyncio.sleep(random())
+        print(f'END   {job}')
 
 
 class SlurmScheduler(Scheduler):
@@ -195,31 +213,15 @@ class SlurmScheduler(Scheduler):
             'timelimit': 'time',
         }
 
-        # Identifier table
-        self.table = {}
+    async def satisfy(self, job: Job) -> str:
+        results = await gather(*map(self.submit, job.dependencies))
 
-    def id(self, job: Job) -> str:
-        if self.table.get(job.name, job) is job:
-            identifier = job.name
-        else:
-            identifier = str(id(job))
+        for result in results:
+            if isinstance(result, Exception):
+                raise DependencyNeverSatisfiedError(f'aborting {job}') from result
 
-        self.table[identifier] = job
-
-        return identifier
-
-    async def _submit(self, job: Job) -> str:
-        # Wait for all dependencies to be submitted
-        jobids = await asyncio.gather(*[
-            self.submit(dep)
-            for dep in job.dependencies
-        ])
-
-        for jobid in jobids:
-            if isinstance(jobid, Exception):
-                raise DependencyNeverSatisfiedError(f'aborting {job}') from jobid
-
-        # Write submission file
+    async def exec(self, job: Job) -> Any:
+        # Submission script
         lines = [
             f'#!{self.shell}',
             '#',
@@ -230,9 +232,9 @@ class SlurmScheduler(Scheduler):
             lines.append('#SBATCH --array=' + comma_separated(job.array))
 
         if job.array is None:
-            logfile = self.path / f'{self.id(job)}.log'
+            logfile = self.path / f'{self.tag(job)}.log'
         else:
-            logfile = self.path / f'{self.id(job)}_%a.log'
+            logfile = self.path / f'{self.tag(job)}_%a.log'
 
         lines.extend([f'#SBATCH --output={logfile}', '#'])
 
@@ -260,8 +262,8 @@ class SlurmScheduler(Scheduler):
         }
 
         deps = [
-            f'{types[status]}:{jobid}'
-            for status, jobid in zip(job.dependencies.values(), jobids)
+            f'{types[status]}:{await self.submit(dep)}'
+            for dep, status in job.dependencies.items()
         ]
 
         if deps:
@@ -281,8 +283,8 @@ class SlurmScheduler(Scheduler):
         elif self.env:
             lines.extend([*self.env, ''])
 
-        ## Pickle function
-        pklfile = self.path / f'{self.id(job)}.pkl'
+        ## Pickle job
+        pklfile = self.path / f'{self.tag(job)}.pkl'
 
         with open(pklfile, 'wb') as f:
             f.write(pkl.dumps(job.fn))
@@ -291,7 +293,7 @@ class SlurmScheduler(Scheduler):
         unpickle = [
             'python << EOC',
             'import pickle',
-            f'with open(r\'{pklfile}\', \'rb\')) as file:',
+            f'with open(r\'{pklfile}\', \'rb\') as file:',
             f'    pickle.load(file)({args})',
             'EOC',
         ]
@@ -299,12 +301,12 @@ class SlurmScheduler(Scheduler):
         lines.extend([*unpickle, ''])
 
         ## Save
-        shfile = self.path / f'{self.id(job)}.sh'
+        shfile = self.path / f'{self.tag(job)}.sh'
 
         with open(shfile, 'w') as f:
             f.write('\n'.join(lines))
 
-        # Submit job
+        # Submit script
         try:
             text = run(['sbatch', str(shfile)], capture_output=True, check=True, text=True).stdout
             jobid, *_ = text.splitlines()

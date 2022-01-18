@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import setuptools
-import dawgz
 
 with open('README.md', 'r') as f:
     readme = f.read()
@@ -11,13 +10,13 @@ with open('requirements.txt', 'r') as f:
 
 setuptools.setup(
     name='dawgz',
-    packages=['dawgz'],
-    version=dawgz.__version__,
+    version='0.2.3',
+    packages=setuptools.find_packages(),
     description='Directed Acyclic Workflow Graph Scheduling',
     keywords='acyclic workflow graph scheduling reproducible-science slurm hpc hpc-tools',
     long_description=readme,
     long_description_content_type='text/markdown',
-    author='François Rozet, Joeri Hermans, Arnaud Delaunoy',
+    author='François Rozet, Joeri Hermans',
     author_email='francois.rozet@outlook.com',
     license='MIT license',
     url='https://github.com/francois-rozet/dawgz',
@@ -33,9 +32,6 @@ setuptools.setup(
         'Natural Language :: English',
         'Operating System :: OS Independent',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.8',
-        'Programming Language :: Python :: 3.9',
-        'Programming Language :: Python :: 3.10',
     ],
     install_requires=required,
     python_requires='>=3.8',

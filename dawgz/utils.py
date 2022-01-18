@@ -2,10 +2,11 @@ r"""Miscellaneous helpers"""
 
 import asyncio
 import contextvars
+import inspect
+import sys
 import traceback
 
 from functools import partial, lru_cache
-from inspect import signature
 from typing import Any, Callable, Coroutine, Iterable, List
 
 
@@ -15,7 +16,7 @@ def accepts(f: Callable, *args, **kwargs) -> bool:
     *args and **kwargs without errors."""
 
     try:
-        signature(f).bind(*args, **kwargs)
+        inspect.signature(f).bind(*args, **kwargs)
     except TypeError as e:
         return False
     else:
@@ -25,11 +26,14 @@ def accepts(f: Callable, *args, **kwargs) -> bool:
 async def awaitable(x: Any) -> Any:
     r"""Transforms any object to an awaitable."""
 
-    return x
+    if inspect.isawaitable(x):
+        return await x
+    else:
+        return x
 
 
 async def catch(coroutine: Coroutine) -> Any:
-    r""""Catches possible exceptions in coroutine."""
+    r"""Catches possible exceptions in coroutine."""
 
     return (await asyncio.gather(coroutine, return_exceptions=True))[0]
 
@@ -43,7 +47,7 @@ def comma_separated(integers: Iterable[int]) -> str:
     i = j = integers[0]
 
     for k in integers[1:]:
-        if  k > j + 1:
+        if k > j + 1:
             intervals.append((i, j))
             i = j = k
         else:
@@ -56,10 +60,22 @@ def comma_separated(integers: Iterable[int]) -> str:
     return ','.join(map(fmt, *zip(*intervals)))
 
 
+def eprint(*args, **kwargs) -> None:
+    r"""Prints to the standard error stream."""
+
+    print(*args, file=sys.stderr, **kwargs)
+
+
 def every(conditions: List[Callable]) -> Callable:
     r"""Combines a list of conditions into a single condition."""
 
     return lambda *args: all(c(*args) for c in conditions)
+
+
+async def gather(*args, **kwargs) -> List[Any]:
+    r"""Replica of `asyncio.gather` that accepts non-awaitable arguments."""
+
+    return await asyncio.gather(*map(awaitable, args), **kwargs)
 
 
 async def to_thread(f: Callable, /, *args, **kwargs) -> Any:

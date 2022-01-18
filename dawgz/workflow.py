@@ -93,16 +93,11 @@ class Job(Node):
 
     @property
     def fn(self) -> Callable:
-        name, f = self.name, self.f
-
-        pre = every(self.preconditions)
-        post = every(self.postconditions)
+        name, f, post = self.name, self.f, self.postcondition
 
         def call(*args) -> Any:
-            assert pre(*args), f'{name} does not satisfy its preconditions'
             result = f(*args)
             assert post(*args), f'{name} does not satisfy its postconditions'
-
             return result
 
         return call
@@ -140,19 +135,6 @@ class Job(Node):
 
         self._waitfor = mode
 
-    def require(self, condition: Callable) -> None:
-        if self.array is None:
-            assert accepts(condition), 'precondition should not expect arguments'
-        else:
-            assert accepts(condition) or accepts(condition, 0), \
-                'precondition should expect at most one argument'
-
-            if accepts(condition):
-                c = condition
-                condition = lambda _: c()
-
-        self.preconditions.append(condition)
-
     def ensure(self, condition: Callable) -> None:
         if self.array is None:
             assert accepts(condition), 'postcondition should not expect arguments'
@@ -161,17 +143,19 @@ class Job(Node):
 
         self.postconditions.append(condition)
 
+    @property
+    def postcondition(self) -> Callable:
+        return every(self.postconditions)
+
     @cached_property
     def done(self) -> bool:
         if not self.postconditions:
             return False
 
-        condition = every(self.postconditions)
-
         if self.array is None:
-            return condition()
+            return self.postcondition()
         else:
-            return all(map(condition, self.array))
+            return all(map(self.postcondition, self.array))
 
     @property
     def satisfiable(self) -> bool:
@@ -249,10 +233,9 @@ def prune(*jobs) -> Set[Job]:
         if job.done:
             job.detach(*job.dependencies)
         elif job.array is not None and job.postconditions:
-            condition = every(job.postconditions)
             job.array = {
                 i for i in job.array
-                if not condition(i)
+                if not job.postcondition(i)
             }
 
         satisfied, unsatisfied, pending = [], [], []

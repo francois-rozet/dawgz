@@ -56,10 +56,10 @@ def estimate():
 
     print(f'π ≈ {pi_estimate}')
 
-schedule(estimate, backend='local')
+schedule(estimate, backend='async')
 ```
 
-Running this script with the `'local'` backend displays
+Running this script with the `'async'` backend displays
 
 ```
 $ python examples/pi.py
@@ -88,7 +88,7 @@ Check out the the [interface](#Interface) and the [examples](examples/) to disco
 
 ### Decorators
 
-The package provides five decorators:
+The package provides four decorators:
 
 * `@dawgz.job` registers a function as a job, with its parameters (name, array, resources, ...). It should always be the first (lowest) decorator. In the following example, `a` is a job with the name `'A'` and a time limit of one hour.
 
@@ -114,28 +114,20 @@ The package provides five decorators:
     def c():
     ```
 
-* `@dawgz.require` adds a [precondition](https://en.wikipedia.org/wiki/Preconditions) to a job, *i.e.* a condition that must be `True` prior to the execution of the job. If preconditions are not satisfied, the job is never executed. In the following example, `d` requires `tmp` to be an existing directory.
+* `@dawgz.ensure` adds a [postcondition](https://en.wikipedia.org/wiki/Postconditions) to a job, *i.e.* a condition that must be `True` after the execution of the job. Not satisfying all postconditions after execution results in an `AssertionError`. In the following example, `d` ensures that the file `log.txt` exists.
 
     ```python
-    @require(lambda: os.path.isdir('tmp'))
+    @ensure(lambda: os.path.exists('log.txt'))
     @job
     def d():
-    ```
-
-* `@dawgz.ensure` adds a [postcondition](https://en.wikipedia.org/wiki/Postconditions) to a job, *i.e.* a condition that must be `True` after the execution of the job. In the following example, `e` ensures that the file `tmp/dump.log` exists.
-
-    ```python
-    @after(d)
-    @ensure(lambda: os.path.exists('tmp/dump.log'))
-    @job
-    def e():
     ```
 
     > Traditionally, postconditions are only **necessary** indicators that the job completed with success. In `dawgz`, they are considered both necessary and **sufficient** indicators. Therefore, postconditions can be used to detect jobs that have already been executed and prune them out from the workflow, if requested.
 
 ### Backends
 
-Currently, `dawgz.schedule` only supports two backends: `local` and `slurm`.
+Currently, `dawgz.schedule` only supports three backends: `async`, `dummy` and `slurm`.
 
-* `local` schedules locally the jobs by waiting asynchronously for dependencies to complete before executing each job. It does not take the requested resources into account.
+* `async` waits asynchronously for dependencies to complete before executing each job. The jobs are executed by the current Python interpreter.
+* `dummy` is equivalent to `async`, but instead of executing the jobs, prints their name before and after a short (random) sleep time. The main use of `dummy` is debugging.
 * `slurm` submits the jobs to the Slurm workload manager by generating automatically the `sbatch` submission scripts.

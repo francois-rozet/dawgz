@@ -29,4 +29,4 @@ def estimate():
 
     print(f'π ≈ {pi_estimate}')
 
-schedule(estimate, backend='local')
+schedule(estimate, backend='async')

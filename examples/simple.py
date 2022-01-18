@@ -2,7 +2,7 @@
 
 import time
 
-from dawgz import job, after, waitfor, require, ensure, schedule
+from dawgz import job, after, waitfor, ensure, schedule
 
 @job
 def a():
@@ -11,7 +11,6 @@ def a():
     print('a')
     raise Exception()
 
-@require(lambda: 1 + 1 == 2)
 @job
 def b():
     time.sleep(1)
@@ -30,8 +29,6 @@ finished = [True] * 100
 finished[42] = False
 
 @after(b)
-@require(lambda i: i < len(finished))
-@require(lambda: type(finished) is list)
 @ensure(lambda i: finished[i])
 @job(array=100)
 def d(i: int):
@@ -44,4 +41,4 @@ def d(i: int):
 def e():
     print('e')
 
-schedule(c, e, backend='local', prune=True)
+schedule(c, e, backend='async', prune=True)
