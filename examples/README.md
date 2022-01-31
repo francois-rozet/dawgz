@@ -55,3 +55,45 @@ Traceback (most recent call last):
 dawgz.schedulers.JobFailedError: a
 -------------------------------------------------------------------------
 ```
+
+## Train example
+
+In [`train.py`](train.py) we define a workflow that alternates between training and evaluation steps. The training steps are consecutive, meaning that the `i`th is always executed after the `i-1`th and before the `i+1`th. However, the evaluation steps can be executed directly after their respective training step, even though preceding
+evaluation steps have not completed yet. The workflow graph looks like
+
+```
+preprocessing → train_1 → train_2 → train_3
+                   ↓         ↓         ↓
+                 eval_1    eval_2    eval_3
+```
+
+and scheduling the dependency graph results in the following output
+
+```
+data preprocessing
+training step 1
+evaluation step 1
+training step 2
+evaluation step 2
+training step 3
+evaluation step 3
+```
+
+However, if we change the backend to `'dummy'`, we observe that the evaluation steps are not necessarily consecutive, as expected.
+
+```
+START preprocessing
+END   preprocessing
+START train_1
+END   train_1
+START eval_1
+START train_2
+END   eval_1
+END   train_2
+START eval_2
+START train_3
+END   train_3
+START eval_3
+END   eval_3
+END   eval_2
+```
