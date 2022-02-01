@@ -4,13 +4,13 @@ import asyncio
 import cloudpickle as pkl
 import os
 import shutil
+import subprocess
 
 from abc import ABC, abstractmethod
 from datetime import datetime
 from functools import partial
 from pathlib import Path
 from random import random
-from subprocess import run
 from typing import Any, Dict, List
 
 from .utils import awaitable, catch, comma_separated, eprint, gather, to_thread, trace
@@ -308,11 +308,14 @@ class SlurmScheduler(Scheduler):
 
         # Submit script
         try:
-            text = run(['sbatch', str(shfile)], capture_output=True, check=True, text=True).stdout
+            text = subprocess.run(['sbatch', str(shfile)], capture_output=True, check=True, text=True).stdout
             jobid, *_ = text.splitlines()
 
             return jobid
         except Exception as e:
+            if isinstance(e, subprocess.CalledProcessError):
+                e = subprocess.SubprocessError(e.stderr.strip('\n'))
+
             raise JobSubmissionError(f'could not submit {job}') from e
 
 
