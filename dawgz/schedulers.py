@@ -65,7 +65,7 @@ class Scheduler(ABC):
         if job.satisfiable:
             await self.satisfy(job)
         else:
-            raise DependencyNeverSatisfiedError(f'aborting {job}')
+            raise DependencyNeverSatisfiedError(f"aborting {job}")
 
         _ = self.tag(job)
 
@@ -103,8 +103,9 @@ def schedule(
 
     if warn:
         traces = list(map(trace, scheduler.errors.values()))
+
         if traces:
-            traces.insert(0, 'DAWGZWarning: errors occurred while scheduling')
+            traces.insert(0, "DAWGZWarning: errors occurred while scheduling")
 
             length = max(
                 len(line)
@@ -142,7 +143,7 @@ class AsyncScheduler(Scheduler):
 
                 if isinstance(result, Exception):
                     if job.waitfor == 'all':
-                        raise DependencyNeverSatisfiedError(f'aborting {job}') from result
+                        raise DependencyNeverSatisfiedError(f"aborting {job}") from result
                 elif job.waitfor == 'any':
                     break
             else:
@@ -150,7 +151,7 @@ class AsyncScheduler(Scheduler):
             break
         else:
             if job.dependencies and job.waitfor == 'any':
-                raise DependencyNeverSatisfiedError(f'aborting {job}')
+                raise DependencyNeverSatisfiedError(f"aborting {job}")
 
     async def exec(self, job: Job) -> Any:
         try:
@@ -159,16 +160,16 @@ class AsyncScheduler(Scheduler):
             else:
                 return await gather(*map(partial(to_thread, job.fn), job.array))
         except Exception as e:
-            raise JobFailedError(f'{job}') from e
+            raise JobFailedError(f"{job}") from e
 
 
 class DummyScheduler(AsyncScheduler):
     r"""Dummy scheduler"""
 
     async def exec(self, job: Job) -> None:
-        print(f'START {job}')
+        print(f"START {job}")
         await asyncio.sleep(random())
-        print(f'END   {job}')
+        print(f"END   {job}")
 
 
 class SlurmScheduler(Scheduler):
@@ -185,13 +186,13 @@ class SlurmScheduler(Scheduler):
     ):
         super().__init__()
 
-        assert shutil.which('sbatch') is not None, 'sbatch executable not found'
+        assert shutil.which('sbatch') is not None, "sbatch executable not found"
 
         if name is None:
             name = datetime.now().strftime('%y%m%d_%H%M%S')
 
         path = Path(path) / name
-        assert not path.exists(), f'{path} already exists'
+        assert not path.exists(), f"{path} already exists"
         path.mkdir(parents=True, exist_ok=True)
 
         self.name = name
@@ -218,25 +219,28 @@ class SlurmScheduler(Scheduler):
 
         for result in results:
             if isinstance(result, Exception):
-                raise DependencyNeverSatisfiedError(f'aborting {job}') from result
+                raise DependencyNeverSatisfiedError(f"aborting {job}") from result
 
     async def exec(self, job: Job) -> Any:
         # Submission script
         lines = [
-            f'#!{self.shell}',
-            '#',
-            f'#SBATCH --job-name={job.name}',
+            f"#!{self.shell}",
+            f"#",
+            f"#SBATCH --job-name={job.name}",
         ]
 
         if job.array is not None:
-            lines.append('#SBATCH --array=' + comma_separated(job.array))
+            lines.append("#SBATCH --array=" + comma_separated(job.array))
 
         if job.array is None:
             logfile = self.path / f'{self.tag(job)}.log'
         else:
             logfile = self.path / f'{self.tag(job)}_%a.log'
 
-        lines.extend([f'#SBATCH --output={logfile}', '#'])
+        lines.extend([
+            f"#SBATCH --output={logfile}",
+            f"#",
+        ])
 
         ## Settings
         settings = self.settings.copy()
@@ -246,12 +250,12 @@ class SlurmScheduler(Scheduler):
             key = self.translate.get(key, key)
 
             if value is None:
-                lines.append(f'#SBATCH --{key}')
+                lines.append(f"#SBATCH --{key}")
             else:
-                lines.append(f'#SBATCH --{key}={value}')
+                lines.append(f"#SBATCH --{key}={value}")
 
         if settings:
-            lines.append('#')
+            lines.append("#")
 
         ## Dependencies
         sep = '?' if job.waitfor == 'any' else ','
@@ -267,21 +271,24 @@ class SlurmScheduler(Scheduler):
         ]
 
         if deps:
-            lines.extend(['#SBATCH --dependency=' + sep.join(deps), '#'])
+            lines.extend([
+                "#SBATCH --dependency=" + sep.join(deps),
+                "#",
+            ])
 
         ## Convenience
         lines.extend([
-            '#SBATCH --export=ALL',
-            '#SBATCH --parsable',
-            '#SBATCH --requeue',
-            '',
+            "#SBATCH --export=ALL",
+            "#SBATCH --parsable",
+            "#SBATCH --requeue",
+            "",
         ])
 
         ## Environment
         if job.env:
-            lines.extend([*job.env, ''])
+            lines.extend([*job.env, ""])
         elif self.env:
-            lines.extend([*self.env, ''])
+            lines.extend([*self.env, ""])
 
         ## Pickle job
         pklfile = self.path / f'{self.tag(job)}.pkl'
@@ -290,15 +297,15 @@ class SlurmScheduler(Scheduler):
             f.write(pkl.dumps(job.fn))
 
         args = '' if job.array is None else '$SLURM_ARRAY_TASK_ID'
-        unpickle = [
-            'python << EOC',
-            'import pickle',
-            f'with open(r\'{pklfile}\', \'rb\') as file:',
-            f'    pickle.load(file)({args})',
-            'EOC',
-        ]
 
-        lines.extend([*unpickle, ''])
+        lines.extend([
+            f"python << EOC",
+            f"import pickle",
+            f"with open(r'{pklfile}', 'rb') as file:",
+            f"    pickle.load(file)({args})",
+            f"EOC",
+            f"",
+        ])
 
         ## Save
         shfile = self.path / f'{self.tag(job)}.sh'
@@ -316,7 +323,7 @@ class SlurmScheduler(Scheduler):
             if isinstance(e, subprocess.CalledProcessError):
                 e = subprocess.SubprocessError(e.stderr.strip('\n'))
 
-            raise JobSubmissionError(f'could not submit {job}') from e
+            raise JobSubmissionError(f"could not submit {job}") from e
 
 
 class CyclicDependencyGraphError(Exception):

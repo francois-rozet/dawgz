@@ -79,14 +79,14 @@ async def gather(*args, **kwargs) -> List[Any]:
 
 
 async def to_thread(f: Callable, /, *args, **kwargs) -> Any:
-    r"""Asynchronously run function `f` in a separate thread.
+    r"""Asynchronously runs function `f` in a separate thread.
 
     Any *args and **kwargs supplied for this function are directly passed
     to `f`. Also, the current `contextvars.Context` is propagated,
     allowing context variables from the main thread to be accessed in the
     separate thread.
 
-    Return a coroutine that can be awaited to get the eventual result of `f`.
+    Returns a coroutine that can be awaited to get the eventual result of `f`.
 
     References:
         https://github.com/python/cpython/blob/main/Lib/asyncio/threads.py
@@ -100,7 +100,7 @@ async def to_thread(f: Callable, /, *args, **kwargs) -> Any:
 
 
 def trace(error: Exception) -> str:
-    r"""Returns the trace of an exception."""
+    r"""Returns the trace of an error."""
 
     lines = traceback.format_exception(
         type(error),

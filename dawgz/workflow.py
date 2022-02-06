@@ -61,14 +61,14 @@ class Job(Node):
         super().__init__(f.__name__ if name is None else name)
 
         if array is None:
-            assert accepts(f), 'job should not expect arguments'
+            assert accepts(f), "job should not expect arguments"
         else:
             if type(array) is int:
                 array = range(array)
             array = set(array)
 
-            assert len(array) > 0, 'array should not be empty'
-            assert accepts(f, 0), 'job array should expect one argument'
+            assert len(array) > 0, "array should not be empty"
+            assert accepts(f, 0), "job array should expect one argument"
 
         self.f = f
         self.array = array
@@ -97,7 +97,7 @@ class Job(Node):
 
         def call(*args) -> Any:
             result = f(*args)
-            assert post(*args), f'{name} does not satisfy its postconditions'
+            assert post(*args), f"{name}{args} does not satisfy its postconditions"
             return result
 
         return call
@@ -137,9 +137,9 @@ class Job(Node):
 
     def ensure(self, condition: Callable) -> None:
         if self.array is None:
-            assert accepts(condition), 'postcondition should not expect arguments'
+            assert accepts(condition), "postcondition should not expect arguments"
         else:
-            assert accepts(condition, 0), 'postcondition should expect one argument'
+            assert accepts(condition, 0), "postcondition should expect one argument"
 
         self.postconditions.append(condition)
 
