@@ -1,7 +1,7 @@
 r"""Directed Acyclic Workflow Graph Scheduling"""
 
 from functools import partial
-from typing import Callable, Union
+from typing import *
 
 from .schedulers import schedule
 from .workflow import Job, leafs, roots

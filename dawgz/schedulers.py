@@ -1,19 +1,19 @@
 r"""Scheduling backends"""
 
 import asyncio
-import cloudpickle as pkl
+import cloudpickle as pickle
+import concurrent.futures as cf
 import os
 import shutil
 import subprocess
 
 from abc import ABC, abstractmethod
 from datetime import datetime
-from functools import partial
 from pathlib import Path
 from random import random
-from typing import Any, Dict, List
+from typing import *
 
-from .utils import awaitable, catch, comma_separated, eprint, gather, to_thread, trace
+from .utils import comma_separated, eprint, future, runpickle, trace
 from .workflow import Job, cycles, prune as _prune
 
 
@@ -37,8 +37,8 @@ class Scheduler(ABC):
     @property
     def results(self) -> Dict[Job, Any]:
         return {
-            job: task.result()
-            for job, task in self.submissions.items()
+            job: fut.result()
+            for job, fut in self.submissions.items()
         }
 
     @property
@@ -55,11 +55,11 @@ class Scheduler(ABC):
 
     async def submit(self, job: Job) -> Any:
         if job in self.submissions:
-            task = self.submissions[job]
+            fut = self.submissions[job]
         else:
-            task = self.submissions[job] = asyncio.create_task(catch(self._submit(job)))
+            fut = self.submissions[job] = future(self._submit(job), return_exceptions=True)
 
-        return await task
+        return await fut
 
     async def _submit(self, job: Job) -> Any:
         if job.satisfiable:
@@ -124,11 +124,19 @@ def schedule(
 class AsyncScheduler(Scheduler):
     r"""Asynchronous scheduler"""
 
+    def __init__(self, pools: int = None):
+        super().__init__()
+
+        if pools is None:
+            self.executor = cf.ThreadPoolExecutor()
+        else:
+            self.executor = cf.ProcessPoolExecutor(pools)
+
     async def satisfy(self, job: Job) -> None:
-        pending = {
-            asyncio.create_task(gather(self.submit(dep), status))
+        pending = [
+            asyncio.gather(self.submit(dep), future(status))
             for dep, status in job.dependencies.items()
-        }
+        ]
 
         while pending:
             done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
@@ -154,13 +162,27 @@ class AsyncScheduler(Scheduler):
                 raise DependencyNeverSatisfiedError(f"aborting {job}")
 
     async def exec(self, job: Job) -> Any:
+        dump = pickle.dumps(job.fn)
+        call = lambda *args: self.remote(runpickle, dump, *args)
+
         try:
             if job.array is None:
-                return await to_thread(job.fn)
+                return await call()
             else:
-                return await gather(*map(partial(to_thread, job.fn), job.array))
+                results = await asyncio.gather(*map(call, job.array), return_exceptions=True)
+
+                for i, result in zip(job.array, results):
+                    if isinstance(result, Exception):
+                        raise result
+
+                return results
         except Exception as e:
             raise JobFailedError(f"{job}") from e
+
+    async def remote(self, f: Callable, /, *args) -> Any:
+        return await asyncio.get_running_loop().run_in_executor(
+            self.executor, f, *args
+        )
 
 
 class DummyScheduler(AsyncScheduler):
@@ -215,7 +237,7 @@ class SlurmScheduler(Scheduler):
         }
 
     async def satisfy(self, job: Job) -> str:
-        results = await gather(*map(self.submit, job.dependencies))
+        results = await asyncio.gather(*map(self.submit, job.dependencies))
 
         for result in results:
             if isinstance(result, Exception):
@@ -294,7 +316,7 @@ class SlurmScheduler(Scheduler):
         pklfile = self.path / f'{self.tag(job)}.pkl'
 
         with open(pklfile, 'wb') as f:
-            f.write(pkl.dumps(job.fn))
+            f.write(pickle.dumps(job.fn))
 
         args = '' if job.array is None else '$SLURM_ARRAY_TASK_ID'
 

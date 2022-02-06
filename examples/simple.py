@@ -41,4 +41,5 @@ def d(i: int):
 def e():
     print('e')
 
-schedule(c, e, backend='async', prune=True)
+if __name__ == '__main__':
+    schedule(c, e, backend='async', prune=True)

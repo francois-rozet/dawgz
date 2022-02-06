@@ -29,4 +29,5 @@ def estimate():
 
     print(f'π ≈ {pi_estimate}')
 
-schedule(estimate, backend='async')
+if __name__ == '__main__':
+    schedule(estimate, backend='async')

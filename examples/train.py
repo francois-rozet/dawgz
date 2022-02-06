@@ -30,4 +30,5 @@ for i in range(1, 4):
 
 evals = [e for t, e in seq]
 
-schedule(*evals, backend='async')
+if __name__ == '__main__':
+    schedule(*evals, backend='async')

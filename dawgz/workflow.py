@@ -1,7 +1,7 @@
 r"""Workflow graph components"""
 
 from functools import cached_property
-from typing import Any, Callable, Dict, Iterable, Iterator, List, Set, Tuple, Union
+from typing import *
 
 from .utils import accepts, comma_separated, every
 

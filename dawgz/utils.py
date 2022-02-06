@@ -1,19 +1,16 @@
 r"""Miscellaneous helpers"""
 
 import asyncio
-import contextvars
+import cloudpickle as pickle
 import inspect
 import sys
 import traceback
 
-from functools import partial, lru_cache
-from typing import Any, Callable, Coroutine, Iterable, List
+from typing import *
 
 
-@lru_cache(maxsize=None, typed=True)
-def accepts(f: Callable, *args, **kwargs) -> bool:
-    r"""Checks whether function `f` accepts the supplied
-    *args and **kwargs without errors."""
+def accepts(f: Callable, /, *args, **kwargs) -> bool:
+    r"""Checks whether a function `f` accepts arguments without errors."""
 
     try:
         inspect.signature(f).bind(*args, **kwargs)
@@ -21,21 +18,6 @@ def accepts(f: Callable, *args, **kwargs) -> bool:
         return False
     else:
         return True
-
-
-async def awaitable(x: Any) -> Any:
-    r"""Transforms any object to an awaitable."""
-
-    if inspect.isawaitable(x):
-        return await x
-    else:
-        return x
-
-
-async def catch(coroutine: Coroutine) -> Any:
-    r"""Catches possible exceptions in coroutine."""
-
-    return (await asyncio.gather(coroutine, return_exceptions=True))[0]
 
 
 def comma_separated(integers: Iterable[int]) -> str:
@@ -72,31 +54,34 @@ def every(conditions: List[Callable]) -> Callable:
     return lambda *args: all(c(*args) for c in conditions)
 
 
-async def gather(*args, **kwargs) -> List[Any]:
-    r"""Replica of `asyncio.gather` that accepts non-awaitable arguments."""
+def future(obj: Any, return_exceptions: bool = False) -> asyncio.Future:
+    r"""Transforms any object to an awaitable future."""
 
-    return await asyncio.gather(*map(awaitable, args), **kwargs)
+    if inspect.isawaitable(obj):
+        if return_exceptions:
+            fut = asyncio.Future()
+
+            def callback(self):
+                result = self.exception()
+                if result is None:
+                    result = self.result()
+
+                fut.set_result(result)
+
+            asyncio.ensure_future(obj).add_done_callback(callback)
+        else:
+            fut = asyncio.ensure_future(obj)
+    else:
+        fut = asyncio.Future()
+        fut.set_result(obj)
+
+    return fut
 
 
-async def to_thread(f: Callable, /, *args, **kwargs) -> Any:
-    r"""Asynchronously runs function `f` in a separate thread.
+def runpickle(f: bytes, /, *args, **kwargs) -> Any:
+    r"""Runs a pickled function `f` with arguments."""
 
-    Any *args and **kwargs supplied for this function are directly passed
-    to `f`. Also, the current `contextvars.Context` is propagated,
-    allowing context variables from the main thread to be accessed in the
-    separate thread.
-
-    Returns a coroutine that can be awaited to get the eventual result of `f`.
-
-    References:
-        https://github.com/python/cpython/blob/main/Lib/asyncio/threads.py
-    """
-
-    loop = asyncio.get_running_loop()
-    ctx = contextvars.copy_context()
-    func_call = partial(ctx.run, f, *args, **kwargs)
-
-    return await loop.run_in_executor(None, func_call)
+    return pickle.loads(f)(*args, **kwargs)
 
 
 def trace(error: Exception) -> str:
