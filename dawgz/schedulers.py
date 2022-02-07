@@ -271,8 +271,9 @@ class SlurmScheduler(Scheduler):
         for key, value in settings.items():
             key = self.translate.get(key, key)
 
-            if value is None:
-                lines.append(f"#SBATCH --{key}")
+            if type(value) is bool:
+                if value:
+                    lines.append(f"#SBATCH --{key}")
             else:
                 lines.append(f"#SBATCH --{key}={value}")
 
@@ -302,7 +303,6 @@ class SlurmScheduler(Scheduler):
         lines.extend([
             "#SBATCH --export=ALL",
             "#SBATCH --parsable",
-            "#SBATCH --requeue",
             "",
         ])
 
