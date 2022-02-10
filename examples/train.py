@@ -2,33 +2,32 @@
 
 import time
 
-from dawgz import job, after, waitfor, ensure, schedule
+from dawgz import job, after, waitfor, ensure, context, schedule
 
 @job
 def preprocessing():
     print('data preprocessing')
     
-seq = []
+sequence = []
+previous = preprocessing
 
 for i in range(1, 4):
-    if seq:
-        dep = seq[-1][0]
-    else:
-        dep = preprocessing
-
-    @after(dep)
+    @after(previous)
+    @context(i=i)
     @job(name=f'train_{i}')
-    def train(i: int = i):  # fixes the value of i locally
+    def train():
         print(f'training step {i}')
 
     @after(train)
+    @context(i=i)
     @job(name=f'eval_{i}')
-    def evaluate(i: int = i):
+    def evaluate():
         print(f'evaluation step {i}')
 
-    seq.append((train, evaluate))
+    sequence.append((train, evaluate))
+    previous = train
 
-evals = [e for t, e in seq]
+evals = [e for t, e in sequence]
 
 if __name__ == '__main__':
     schedule(*evals, backend='async')

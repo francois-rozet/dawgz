@@ -50,8 +50,9 @@ class Scheduler(ABC):
         }
 
     async def wait(self, *jobs) -> None:
-        await asyncio.wait(map(self.submit, jobs))
-        await asyncio.wait(self.submissions.values())
+        if jobs:
+            await asyncio.wait(map(self.submit, jobs))
+            await asyncio.wait(self.submissions.values())
 
     async def submit(self, job: Job) -> Any:
         if job in self.submissions:

@@ -36,3 +36,11 @@ def ensure(condition: Callable) -> Callable:
         return self
 
     return decorator
+
+
+def context(**kwargs) -> Callable:
+    def decorator(self: Job) -> Job:
+        self.context.update(kwargs)
+        return self
+
+    return decorator

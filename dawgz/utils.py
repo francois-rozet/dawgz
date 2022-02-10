@@ -6,6 +6,7 @@ import inspect
 import sys
 import traceback
 
+from types import FunctionType
 from typing import *
 
 
@@ -40,6 +41,18 @@ def comma_separated(integers: Iterable[int]) -> str:
     fmt = lambda i, j: f'{i}' if i == j else f'{i}-{j}'
 
     return ','.join(map(fmt, *zip(*intervals)))
+
+
+def contextualize(f: FunctionType, /, **context) -> FunctionType:
+    r"""Contextualizes a function."""
+
+    f.__globals__.update(context)
+
+    for i, var in enumerate(f.__code__.co_freevars):
+        if var in context:
+            f.__closure__[i].cell_contents = context[var]
+
+    return f
 
 
 def eprint(*args, **kwargs) -> None:

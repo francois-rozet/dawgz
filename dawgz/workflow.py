@@ -3,7 +3,7 @@ r"""Workflow graph components"""
 from functools import cached_property
 from typing import *
 
-from .utils import accepts, comma_separated, every
+from .utils import accepts, comma_separated, contextualize, every
 
 
 class Node(object):
@@ -13,9 +13,8 @@ class Node(object):
         super().__init__()
 
         self.name = name
-
-        self._children = {}
-        self._parents = {}
+        self.children = {}
+        self.parents = {}
 
     def __repr__(self) -> str:
         return self.name
@@ -24,26 +23,18 @@ class Node(object):
         return repr(self)
 
     def add_child(self, node: 'Node', edge: Any = None) -> None:
-        self._children[node] = edge
-        node._parents[self] = edge
+        self.children[node] = edge
+        node.parents[self] = edge
 
     def add_parent(self, node: 'Node', edge: Any = None) -> None:
         node.add_child(self, edge)
 
     def rm_child(self, node: 'Node') -> None:
-        del self._children[node]
-        del node._parents[self]
+        del self.children[node]
+        del node.parents[self]
 
     def rm_parent(self, node: 'Node') -> None:
         node.rm_child(self)
-
-    @property
-    def children(self) -> List['Node']:
-        return list(self._children)
-
-    @property
-    def parents(self) -> List['Node']:
-        return list(self._parents)
 
 
 class Job(Node):
@@ -73,6 +64,9 @@ class Job(Node):
         self.f = f
         self.array = array
 
+        # Context
+        self.context = {}
+
         # Environment
         self.env = env
 
@@ -95,6 +89,9 @@ class Job(Node):
     def fn(self) -> Callable:
         name, f, post = self.name, self.f, self.postcondition
 
+        contextualize(f, **self.context)
+        contextualize(post, **self.context)
+
         def call(*args) -> Any:
             result = f(*args)
             assert post(*args), f"{name}{args} does not satisfy its postconditions"
@@ -113,7 +110,7 @@ class Job(Node):
 
     @property
     def dependencies(self) -> Dict['Job', str]:
-        return self._parents
+        return self.parents
 
     def after(self, *deps, status: str = 'success') -> None:
         assert status in ['success', 'failure', 'any']
@@ -222,7 +219,7 @@ def cycles(*nodes, backward: bool = False) -> Iterator[List[Node]]:
                 yield path + [node]
             continue
 
-        queue.append(node.parents if backward else node.children)
+        queue.append(list(node.parents if backward else node.children))
         path.append(node)
         pathset.add(node)
         visited.add(node)

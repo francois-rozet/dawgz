@@ -88,7 +88,7 @@ Check out the the [interface](#Interface) and the [examples](examples/) to disco
 
 ### Decorators
 
-The package provides four decorators:
+The package provides five decorators:
 
 * `@dawgz.job` registers a function as a job, with its parameters (name, array, resources, ...). It should always be the first (lowest) decorator. In the following example, `a` is a job with the name `'A'` and a time limit of one hour.
 
@@ -114,7 +114,7 @@ The package provides four decorators:
     def c():
     ```
 
-* `@dawgz.ensure` adds a [postcondition](https://en.wikipedia.org/wiki/Postconditions) to a job, *i.e.* a condition that must be `True` after the execution of the job. Not satisfying all postconditions after execution results in an `AssertionError`. In the following example, `d` ensures that the file `log.txt` exists.
+* `@dawgz.ensure` adds a [postcondition](https://en.wikipedia.org/wiki/Postconditions) to a job, i.e. a condition that must be `True` after the execution of the job. Not satisfying all postconditions after execution results in an `AssertionError`. In the following example, `d` ensures that the file `log.txt` exists.
 
     ```python
     @ensure(lambda: os.path.exists('log.txt'))
@@ -124,9 +124,18 @@ The package provides four decorators:
 
     > Traditionally, postconditions are only **necessary** indicators that the job completed with success. In `dawgz`, they are considered both necessary and **sufficient** indicators. Therefore, postconditions can be used to detect jobs that have already been executed and prune them out from the workflow, if requested.
 
+* `@dawgz.context` specifies the context of a job, i.e. the values of (non-local) variables on which it depends. Providing a context prevents the global value of variables from affecting the job execution. In the following example, the variable `var` is set to always be `42` within `e`.
+
+    ```python
+    @context(var=42)
+    @job
+    def e():
+        print(var)
+    ```
+
 ### Backends
 
-Currently, `dawgz.schedule` only supports three backends: `async`, `dummy` and `slurm`.
+Currently, `dawgz.schedule` supports three backends: `async`, `dummy` and `slurm`.
 
 * `async` waits asynchronously for dependencies to complete before executing each job. The jobs are executed by the current Python interpreter.
 * `dummy` is equivalent to `async`, but instead of executing the jobs, prints their name before and after a short (random) sleep time. The main use of `dummy` is debugging.
