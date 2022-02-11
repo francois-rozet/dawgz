@@ -1,5 +1,6 @@
 r"""Workflow graph components"""
 
+from __future__ import annotations
 from functools import cached_property
 from typing import *
 
@@ -22,18 +23,18 @@ class Node(object):
     def __str__(self) -> str:
         return repr(self)
 
-    def add_child(self, node: 'Node', edge: Any = None) -> None:
+    def add_child(self, node: Node, edge: Any = None) -> None:
         self.children[node] = edge
         node.parents[self] = edge
 
-    def add_parent(self, node: 'Node', edge: Any = None) -> None:
+    def add_parent(self, node: Node, edge: Any = None) -> None:
         node.add_child(self, edge)
 
-    def rm_child(self, node: 'Node') -> None:
+    def rm_child(self, node: Node) -> None:
         del self.children[node]
         del node.parents[self]
 
-    def rm_parent(self, node: 'Node') -> None:
+    def rm_parent(self, node: Node) -> None:
         node.rm_child(self)
 
 
@@ -94,7 +95,10 @@ class Job(Node):
 
         def call(*args) -> Any:
             result = f(*args)
-            assert post(*args), f"{name}{args} does not satisfy its postconditions"
+
+            if not post(*args):
+                raise PostconditionNotSatisfiedError(f"{name}{list(args) if args else ''}")
+
             return result
 
         return call
@@ -109,7 +113,7 @@ class Job(Node):
             return self.name + '[' + comma_separated(self.array) + ']'
 
     @property
-    def dependencies(self) -> Dict['Job', str]:
+    def dependencies(self) -> Dict[Job, str]:
         return self.parents
 
     def after(self, *deps, status: str = 'success') -> None:
@@ -258,3 +262,7 @@ def prune(*jobs) -> Set[Job]:
         job for job in jobs
         if not job.done
     }
+
+
+class PostconditionNotSatisfiedError(Exception):
+    pass

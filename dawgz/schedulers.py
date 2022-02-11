@@ -66,7 +66,7 @@ class Scheduler(ABC):
         if job.satisfiable:
             await self.satisfy(job)
         else:
-            raise DependencyNeverSatisfiedError(f"aborting {job}")
+            raise DependencyNeverSatisfiedError(repr(job))
 
         _ = self.tag(job)
 
@@ -89,7 +89,7 @@ def schedule(
     **kwargs,
 ) -> Scheduler:
     for cycle in cycles(*jobs, backward=True):
-        raise CyclicDependencyGraphError(' <- '.join(map(str, cycle)))
+        raise CyclicDependencyGraphError(' <- '.join(map(repr, cycle)))
 
     if prune:
         jobs = _prune(*jobs)
@@ -152,7 +152,7 @@ class AsyncScheduler(Scheduler):
 
                 if isinstance(result, Exception):
                     if job.waitfor == 'all':
-                        raise DependencyNeverSatisfiedError(f"aborting {job}") from result
+                        raise DependencyNeverSatisfiedError(repr(job)) from result
                 elif job.waitfor == 'any':
                     break
             else:
@@ -160,7 +160,7 @@ class AsyncScheduler(Scheduler):
             break
         else:
             if job.dependencies and job.waitfor == 'any':
-                raise DependencyNeverSatisfiedError(f"aborting {job}")
+                raise DependencyNeverSatisfiedError(repr(job))
 
     async def exec(self, job: Job) -> Any:
         dump = pickle.dumps(job.fn)
@@ -178,7 +178,7 @@ class AsyncScheduler(Scheduler):
 
                 return results
         except Exception as e:
-            raise JobFailedError(f"{job}") from e
+            raise JobFailedError(repr(job)) from e
 
     async def remote(self, f: Callable, /, *args) -> Any:
         return await asyncio.get_running_loop().run_in_executor(
@@ -242,7 +242,7 @@ class SlurmScheduler(Scheduler):
 
         for result in results:
             if isinstance(result, Exception):
-                raise DependencyNeverSatisfiedError(f"aborting {job}") from result
+                raise DependencyNeverSatisfiedError(repr(job)) from result
 
     async def exec(self, job: Job) -> Any:
         # Submission script
@@ -346,7 +346,7 @@ class SlurmScheduler(Scheduler):
             if isinstance(e, subprocess.CalledProcessError):
                 e = subprocess.SubprocessError(e.stderr.strip('\n'))
 
-            raise JobSubmissionError(f"could not submit {job}") from e
+            raise JobSubmissionError(repr(job)) from e
 
 
 class CyclicDependencyGraphError(Exception):
