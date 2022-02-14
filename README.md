@@ -11,13 +11,13 @@ The `dawgz` package provides a lightweight and intuitive interface to declare jo
 The `dawgz` package is available on [PyPi](https://pypi.org/project/dawgz/), which means it is installable via `pip`.
 
 ```
-$ pip install dawgz
+pip install dawgz
 ```
 
 Alternatively, if you need the latest features, you can install it using
 
 ```
-$ pip install git+https://github.com/francois-rozet/dawgz
+pip install git+https://github.com/francois-rozet/dawgz
 ```
 
 ## Getting started
