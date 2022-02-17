@@ -231,7 +231,7 @@ class SlurmScheduler(Scheduler):
 
         self.translate = {
             'cpus': 'cpus-per-task',
-            'gpus': 'gpus-per-task',
+            'gpus': 'gpus-per-node',
             'ram': 'mem',
             'memory': 'mem',
             'timelimit': 'time',
