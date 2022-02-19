@@ -10,18 +10,11 @@ from .utils import accepts, comma_separated, contextualize, every
 class Node(object):
     r"""Abstract graph node"""
 
-    def __init__(self, name: str):
+    def __init__(self):
         super().__init__()
 
-        self.name = name
         self.children = {}
         self.parents = {}
-
-    def __repr__(self) -> str:
-        return self.name
-
-    def __str__(self) -> str:
-        return repr(self)
 
     def add_child(self, node: Node, edge: Any = None) -> None:
         self.children[node] = edge
@@ -50,7 +43,7 @@ class Job(Node):
         settings: Dict[str, Any] = {},
         **kwargs,
     ):
-        super().__init__(f.__name__ if name is None else name)
+        super().__init__()
 
         if array is None:
             assert accepts(f), "job should not expect arguments"
@@ -60,9 +53,10 @@ class Job(Node):
             array = set(array)
 
             assert len(array) > 0, "array should not be empty"
-            assert accepts(f, 0), "job array should expect one argument"
+            assert accepts(f, 0), "job array should expect an argument"
 
-        self.f = f
+        self._f = f
+        self.name = f.__name__ if name is None else name
         self.array = array
 
         # Context
@@ -80,18 +74,13 @@ class Job(Node):
         self.unsatisfied = set()
 
         # Conditions
-        self.preconditions = []
-        self.postconditions = []
-
-        # Pruning
-        self.unsatisfiable = False
+        self._postconditions = []
 
     @property
-    def fn(self) -> Callable:
-        name, f, post = self.name, self.f, self.postcondition
-
-        contextualize(f, **self.context)
-        contextualize(post, **self.context)
+    def f(self) -> Callable:
+        name = self.name
+        f = contextualize(self._f, **self.context)
+        post = every(self.postconditions)
 
         def call(*args) -> Any:
             result = f(*args)
@@ -104,9 +93,9 @@ class Job(Node):
         return call
 
     def __call__(self, *args) -> Any:
-        return self.fn(*args)
+        return self.f(*args)
 
-    def __repr__(self) -> str:
+    def __str__(self) -> str:
         if self.array is None:
             return self.name
         else:
@@ -140,23 +129,28 @@ class Job(Node):
         if self.array is None:
             assert accepts(condition), "postcondition should not expect arguments"
         else:
-            assert accepts(condition, 0), "postcondition should expect one argument"
+            assert accepts(condition, 0), "postcondition should expect an argument"
 
-        self.postconditions.append(condition)
+        self._postconditions.append(condition)
 
     @property
-    def postcondition(self) -> Callable:
-        return every(self.postconditions)
+    def postconditions(self) -> List[Callable]:
+        return [
+            contextualize(condition, **self.context)
+            for condition in self._postconditions
+        ]
 
     @cached_property
     def done(self) -> bool:
         if not self.postconditions:
             return False
 
+        condition = every(self.postconditions)
+
         if self.array is None:
-            return self.postcondition()
+            return condition()
         else:
-            return all(map(self.postcondition, self.array))
+            return all(map(condition, self.array))
 
     @property
     def satisfiable(self) -> bool:
@@ -234,9 +228,10 @@ def prune(*jobs) -> Set[Job]:
         if job.done:
             job.detach(*job.dependencies)
         elif job.array is not None and job.postconditions:
+            condition = every(job.postconditions)
             job.array = {
                 i for i in job.array
-                if not job.postcondition(i)
+                if not condition(i)
             }
 
         satisfied, unsatisfied, pending = [], [], []

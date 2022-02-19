@@ -13,7 +13,7 @@ from pathlib import Path
 from random import random
 from typing import *
 
-from .utils import comma_separated, eprint, future, runpickle, trace
+from .utils import comma_separated, eprint, future, runpickle, trace, slugify
 from .workflow import Job, cycles, prune as _prune
 
 
@@ -32,7 +32,7 @@ class Scheduler(ABC):
         else:
             i = self.table[job] = len(self.table)
 
-        return f'{job.name}_{i:03d}'
+        return f'{slugify(job.name)}_{i:03d}'
 
     @property
     def results(self) -> Dict[Job, Any]:
@@ -66,9 +66,9 @@ class Scheduler(ABC):
         if job.satisfiable:
             await self.satisfy(job)
         else:
-            raise DependencyNeverSatisfiedError(repr(job))
+            raise DependencyNeverSatisfiedError(str(job))
 
-        _ = self.tag(job)
+        self.tag(job)
 
         return await self.exec(job)
 
@@ -89,7 +89,7 @@ def schedule(
     **kwargs,
 ) -> Scheduler:
     for cycle in cycles(*jobs, backward=True):
-        raise CyclicDependencyGraphError(' <- '.join(map(repr, cycle)))
+        raise CyclicDependencyGraphError(' <- '.join(map(str, cycle)))
 
     if prune:
         jobs = _prune(*jobs)
@@ -152,7 +152,7 @@ class AsyncScheduler(Scheduler):
 
                 if isinstance(result, Exception):
                     if job.waitfor == 'all':
-                        raise DependencyNeverSatisfiedError(repr(job)) from result
+                        raise DependencyNeverSatisfiedError(str(job)) from result
                 elif job.waitfor == 'any':
                     break
             else:
@@ -160,10 +160,10 @@ class AsyncScheduler(Scheduler):
             break
         else:
             if job.dependencies and job.waitfor == 'any':
-                raise DependencyNeverSatisfiedError(repr(job))
+                raise DependencyNeverSatisfiedError(str(job))
 
     async def exec(self, job: Job) -> Any:
-        dump = pickle.dumps(job.fn)
+        dump = pickle.dumps(job.f)
         call = lambda *args: self.remote(runpickle, dump, *args)
 
         try:
@@ -178,7 +178,7 @@ class AsyncScheduler(Scheduler):
 
                 return results
         except Exception as e:
-            raise JobFailedError(repr(job)) from e
+            raise JobFailedError(str(job)) from e
 
     async def remote(self, f: Callable, /, *args) -> Any:
         return await asyncio.get_running_loop().run_in_executor(
@@ -241,7 +241,7 @@ class SlurmScheduler(Scheduler):
 
         for result in results:
             if isinstance(result, Exception):
-                raise DependencyNeverSatisfiedError(repr(job)) from result
+                raise DependencyNeverSatisfiedError(str(job)) from result
 
     async def exec(self, job: Job) -> Any:
         # Submission script
@@ -318,15 +318,15 @@ class SlurmScheduler(Scheduler):
         pklfile = self.path / f'{self.tag(job)}.pkl'
 
         with open(pklfile, 'wb') as f:
-            f.write(pickle.dumps(job.fn))
+            pickle.dump(job.f, f)
 
         args = '' if job.array is None else '$SLURM_ARRAY_TASK_ID'
 
         lines.extend([
             f"python << EOC",
             f"import pickle",
-            f"with open(r'{pklfile}', 'rb') as file:",
-            f"    pickle.load(file)({args})",
+            f"with open(r'{pklfile}', 'rb') as f:",
+            f"    pickle.load(f)({args})",
             f"EOC",
             f"",
         ])
@@ -348,7 +348,7 @@ class SlurmScheduler(Scheduler):
             if isinstance(e, subprocess.CalledProcessError):
                 e = subprocess.SubprocessError(e.stderr.strip('\n'))
 
-            raise JobSubmissionError(repr(job)) from e
+            raise JobSubmissionError(str(job)) from e
 
 
 class CyclicDependencyGraphError(Exception):

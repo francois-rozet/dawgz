@@ -97,6 +97,12 @@ def runpickle(f: bytes, /, *args, **kwargs) -> Any:
     return pickle.loads(f)(*args, **kwargs)
 
 
+def slugify(text: str) -> str:
+    r"""Slugifies text."""
+
+    return ''.join(char if char.isalnum() else '_' for char in text)
+
+
 def trace(error: Exception) -> str:
     r"""Returns the trace of an error."""
 
