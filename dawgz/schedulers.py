@@ -215,8 +215,7 @@ class SlurmScheduler(Scheduler):
             name = datetime.now().strftime('%y%m%d_%H%M%S')
 
         path = Path(path) / name
-        assert not path.exists(), f"{path} already exists"
-        path.mkdir(parents=True, exist_ok=True)
+        path.mkdir(parents=True)
 
         self.name = name
         self.path = path.resolve()
@@ -268,6 +267,8 @@ class SlurmScheduler(Scheduler):
         ## Settings
         settings = self.settings.copy()
         settings.update(job.settings)
+
+        assert 'clusters' not in settings, "multi-cluster operations not supported"
 
         for key, value in settings.items():
             key = self.translate.get(key, key)
@@ -340,6 +341,7 @@ class SlurmScheduler(Scheduler):
         try:
             text = subprocess.run(['sbatch', str(shfile)], capture_output=True, check=True, text=True).stdout
             jobid, *_ = text.splitlines()
+            jobid, *_ = jobid.split(';')  # ignore cluster name
 
             return jobid
         except Exception as e:
