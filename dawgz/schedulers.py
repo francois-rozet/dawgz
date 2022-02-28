@@ -6,9 +6,12 @@ import concurrent.futures as cf
 import os
 import shutil
 import subprocess
+import uuid
 
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 from datetime import datetime
+from inspect import isawaitable
 from pathlib import Path
 from random import random
 from typing import *
@@ -17,58 +20,84 @@ from .utils import comma_separated, eprint, future, runpickle, trace, slugify
 from .workflow import Job, cycles, prune as _prune
 
 
+DIR = os.environ.get('DAWGZ_DIR', '.dawgz')
+
+
 class Scheduler(ABC):
     r"""Abstract workflow scheduler"""
 
-    def __init__(self):
+    backend = None
+
+    def __init__(
+        self,
+        name: str = None,
+        settings: Dict[str, Any] = {},
+        **kwargs,
+    ):
         super().__init__()
 
-        self.table = {}
-        self.submissions = {}
+        self.name = name
+        self.date = datetime.now().replace(microsecond=0)
+        self.uuid = uuid.uuid4().hex
+
+        self.path = Path(DIR).resolve() / self.uuid
+        self.path.mkdir(parents=True)
+
+        # Settings
+        self.settings = settings.copy()
+        self.settings.update(kwargs)
+
+        # Jobs
+        self.order = {}
+        self.results = {}
+        self.traces = {}
 
     def tag(self, job: Job) -> str:
-        if job in self.table:
-            i = self.table[job]
+        if job in self.order:
+            i = self.order[job]
         else:
-            i = self.table[job] = len(self.table)
+            i = self.order[job] = len(self.order)
 
-        return f'{slugify(job.name)}_{i:03d}'
+        return f'{i:04d}_{slugify(job.name)}'
 
-    @property
-    def results(self) -> Dict[Job, Any]:
-        return {
-            job: fut.result()
-            for job, fut in self.submissions.items()
-        }
+    @contextmanager
+    def context(self) -> None:
+        try:
+            yield None
+        finally:
+            pass
 
-    @property
-    def errors(self) -> Dict[Job, Exception]:
-        return {
-            job: result
-            for job, result in self.results.items()
-            if isinstance(result, Exception)
-        }
+    def wait(self, *jobs) -> None:
+        with self.context():
+            asyncio.run(self._wait(*jobs))
 
-    async def wait(self, *jobs) -> None:
+    async def _wait(self, *jobs) -> None:
         if jobs:
             await asyncio.wait(map(self.submit, jobs))
-            await asyncio.wait(self.submissions.values())
+            await asyncio.wait(map(self.submit, self.order))
 
     async def submit(self, job: Job) -> Any:
-        if job in self.submissions:
-            fut = self.submissions[job]
+        if job in self.results:
+            result = self.results[job]
         else:
-            fut = self.submissions[job] = future(self._submit(job), return_exceptions=True)
+            result = self.results[job] = future(self._submit(job), return_exceptions=True)
 
-        return await fut
+        if isawaitable(result):
+            result = self.results[job] = await result
+
+            if isinstance(result, Exception):
+                self.traces[job] = trace(result)
+
+        return result
 
     async def _submit(self, job: Job) -> Any:
-        if job.satisfiable:
-            await self.satisfy(job)
-        else:
-            raise DependencyNeverSatisfiedError(str(job))
-
-        self.tag(job)
+        try:
+            if job.satisfiable:
+                await self.satisfy(job)
+            else:
+                raise DependencyNeverSatisfiedError(str(job))
+        finally:
+            self.tag(job)
 
         return await self.exec(job)
 
@@ -79,6 +108,16 @@ class Scheduler(ABC):
     @abstractmethod
     async def exec(self, job: Job) -> Any:
         pass
+
+
+def backends() -> Dict[str, Scheduler]:
+    return {
+        s.backend: s for s in [
+            AsyncScheduler,
+            DummyScheduler,
+            SlurmScheduler,
+        ]
+    }
 
 
 def schedule(
@@ -94,30 +133,23 @@ def schedule(
     if prune:
         jobs = _prune(*jobs)
 
-    scheduler = {
-        'async': AsyncScheduler,
-        'dummy': DummyScheduler,
-        'slurm': SlurmScheduler,
-    }.get(backend)(**kwargs)
+    scheduler = backends().get(backend)(**kwargs)
+    scheduler.wait(*jobs)
 
-    asyncio.run(scheduler.wait(*jobs))
+    if warn and scheduler.traces:
+        traces = ["DAWGZWarning: errors occurred while scheduling"]
+        traces.extend(scheduler.traces.values())
 
-    if warn:
-        traces = list(map(trace, scheduler.errors.values()))
+        length = max(
+            len(line)
+            for trc in traces
+            for line in trc.splitlines()
+        )
 
-        if traces:
-            traces.insert(0, "DAWGZWarning: errors occurred while scheduling")
+        sep = '\n' + '-' * length + '\n'
+        text = sep.join(traces)
 
-            length = max(
-                len(line)
-                for trce in traces
-                for line in trce.splitlines()
-            )
-
-            sep = '\n' + '-' * length + '\n'
-            text = sep.join(traces)
-
-            eprint(text, end=sep)
+        eprint(text, end=sep)
 
     return scheduler
 
@@ -125,13 +157,24 @@ def schedule(
 class AsyncScheduler(Scheduler):
     r"""Asynchronous scheduler"""
 
-    def __init__(self, pools: int = None):
-        super().__init__()
+    backend = 'async'
 
-        if pools is None:
+    def __init__(self, pools: int = None, **kwargs):
+        super().__init__(**kwargs)
+
+        self.pools = pools
+
+    @contextmanager
+    def context(self) -> None:
+        if self.pools is None:
             self.executor = cf.ThreadPoolExecutor()
         else:
-            self.executor = cf.ProcessPoolExecutor(pools)
+            self.executor = cf.ProcessPoolExecutor(self.pools)
+
+        try:
+            yield None
+        finally:
+            del self.executor
 
     async def satisfy(self, job: Job) -> None:
         pending = [
@@ -172,11 +215,11 @@ class AsyncScheduler(Scheduler):
             else:
                 results = await asyncio.gather(*map(call, job.array), return_exceptions=True)
 
-                for i, result in zip(job.array, results):
+                for result in results:
                     if isinstance(result, Exception):
                         raise result
 
-                return results
+                return dict(zip(job.array, results))
         except Exception as e:
             raise JobFailedError(str(job)) from e
 
@@ -189,6 +232,8 @@ class AsyncScheduler(Scheduler):
 class DummyScheduler(AsyncScheduler):
     r"""Dummy scheduler"""
 
+    backend = 'dummy'
+
     async def exec(self, job: Job) -> None:
         print(f"START {job}")
         await asyncio.sleep(random())
@@ -198,43 +243,28 @@ class DummyScheduler(AsyncScheduler):
 class SlurmScheduler(Scheduler):
     r"""Slurm scheduler"""
 
+    backend = 'slurm'
+    translate = {
+        'cpus': 'cpus-per-task',
+        'gpus': 'gpus-per-node',
+        'ram': 'mem',
+        'memory': 'mem',
+        'timelimit': 'time',
+    }
+
     def __init__(
         self,
-        name: str = None,
-        path: str = '.dawgz',
         shell: str = os.environ.get('SHELL', '/bin/sh'),
         env: List[str] = [],  # cd, virtualenv, conda, etc.
-        settings: Dict[str, Any] = {},
         **kwargs,
     ):
-        super().__init__()
+        super().__init__(**kwargs)
 
         assert shutil.which('sbatch') is not None, "sbatch executable not found"
-
-        if name is None:
-            name = datetime.now().strftime('%y%m%d_%H%M%S')
-
-        path = Path(path) / name
-        path.mkdir(parents=True)
-
-        self.name = name
-        self.path = path.resolve()
 
         # Environment
         self.shell = shell
         self.env = env
-
-        # Settings
-        self.settings = settings.copy()
-        self.settings.update(kwargs)
-
-        self.translate = {
-            'cpus': 'cpus-per-task',
-            'gpus': 'gpus-per-node',
-            'ram': 'mem',
-            'memory': 'mem',
-            'timelimit': 'time',
-        }
 
     async def satisfy(self, job: Job) -> str:
         results = await asyncio.gather(*map(self.submit, job.dependencies))
@@ -254,21 +284,23 @@ class SlurmScheduler(Scheduler):
         if job.array is not None:
             lines.append("#SBATCH --array=" + comma_separated(job.array))
 
-        if job.array is None:
-            logfile = self.path / f'{self.tag(job)}.log'
-        else:
-            logfile = self.path / f'{self.tag(job)}_%a.log'
+        tag = self.tag(job)
 
-        lines.extend([
-            f"#SBATCH --output={logfile}",
-            f"#",
-        ])
+        if job.array is None:
+            logfile = self.path / f'{tag}.log'
+        else:
+            logfile = self.path / f'{tag}_%a.log'
+
+        lines.append(f"#SBATCH --output={logfile}")
 
         ## Settings
         settings = self.settings.copy()
         settings.update(job.settings)
 
         assert 'clusters' not in settings, "multi-cluster operations not supported"
+
+        if settings:
+            lines.append("#")
 
         for key, value in settings.items():
             key = self.translate.get(key, key)
@@ -278,9 +310,6 @@ class SlurmScheduler(Scheduler):
                     lines.append(f"#SBATCH --{key}")
             else:
                 lines.append(f"#SBATCH --{key}={value}")
-
-        if settings:
-            lines.append("#")
 
         ## Dependencies
         sep = '?' if job.waitfor == 'any' else ','
@@ -297,25 +326,18 @@ class SlurmScheduler(Scheduler):
 
         if deps:
             lines.extend([
-                "#SBATCH --dependency=" + sep.join(deps),
                 "#",
+                "#SBATCH --dependency=" + sep.join(deps),
             ])
 
-        ## Convenience
-        lines.extend([
-            "#SBATCH --export=ALL",
-            "#SBATCH --parsable",
-            "",
-        ])
+        lines.append("")
 
         ## Environment
-        if job.env:
-            lines.extend([*job.env, ""])
-        elif self.env:
+        if self.env:
             lines.extend([*self.env, ""])
 
         ## Pickle job
-        pklfile = self.path / f'{self.tag(job)}.pkl'
+        pklfile = self.path / f'{tag}.pkl'
 
         with open(pklfile, 'wb') as f:
             pickle.dump(job.f, f)
@@ -332,16 +354,21 @@ class SlurmScheduler(Scheduler):
         ])
 
         ## Save
-        shfile = self.path / f'{self.tag(job)}.sh'
+        shfile = self.path / f'{tag}.sh'
 
         with open(shfile, 'w') as f:
             f.write('\n'.join(lines))
 
         # Submit script
         try:
-            text = subprocess.run(['sbatch', str(shfile)], capture_output=True, check=True, text=True).stdout
-            jobid, *_ = text.splitlines()
-            jobid, *_ = jobid.split(';')  # ignore cluster name
+            text = subprocess.run(
+                ['sbatch', '--parsable', str(shfile)],
+                capture_output=True,
+                check=True,
+                text=True,
+            ).stdout
+
+            jobid, *_ = text.strip('\n').split(';')  # ignore cluster name
 
             return jobid
         except Exception as e:

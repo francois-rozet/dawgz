@@ -39,7 +39,6 @@ class Job(Node):
         f: Callable,
         name: str = None,
         array: Union[int, Iterable[int]] = None,
-        env: List[str] = [],
         settings: Dict[str, Any] = {},
         **kwargs,
     ):
@@ -61,9 +60,6 @@ class Job(Node):
 
         # Context
         self.context = {}
-
-        # Environment
-        self.env = env
 
         # Settings
         self.settings = settings.copy()
