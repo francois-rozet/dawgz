@@ -27,39 +27,15 @@ e
 a
 ```
 
-as well as a warning about the failure of `a`.
+as well as a warning caused by the failure of `a`.
 
 ```
 DAWGZWarning: errors occurred while scheduling
--------------------------------------------------------------------------
-Traceback (most recent call last):
-  File "path/to/dawgz/schedulers.py", line 159, in exec
-    return await to_thread(job.fn)
-  File "path/to/dawgz/utils.py", line 99, in to_thread
-    return await loop.run_in_executor(None, func_call)
-  File "/usr/lib/python3.8/concurrent/futures/thread.py", line 57, in run
-    result = self.fn(*self.args, **self.kwargs)
-  File "path/to/dawgz/workflow.py", line 99, in call
-    result = f(*args)
-  File "simple.py", line 12, in a
-    raise Exception()
-Exception
-
-The above exception was the direct cause of the following exception:
-
-Traceback (most recent call last):
-  File "path/to/dawgz/schedulers.py", line 73, in _submit
-    return await self.exec(job)
-  File "path/to/dawgz/schedulers.py", line 163, in exec
-    raise JobFailedError(f'{job}') from e
-dawgz.schedulers.JobFailedError: a
--------------------------------------------------------------------------
 ```
 
 ## Train example
 
-In [`train.py`](train.py) we define a workflow that alternates between training and evaluation steps. The training steps are consecutive, meaning that the `i`th is always executed after the `i-1`th and before the `i+1`th. However, the evaluation steps can be executed directly after their respective training step, even though preceding
-evaluation steps have not completed yet. The workflow graph looks like
+In [`train.py`](train.py) we define a workflow that alternates between training and evaluation steps. The training steps are consecutive, meaning that the `i`th is always executed after the `i-1`th and before the `i+1`th. However, the evaluation steps can be executed directly after their respective training step, even though preceding evaluation steps have not completed yet. The workflow graph looks like
 
 ```
 preprocessing → train_1 → train_2 → train_3
@@ -79,7 +55,7 @@ training step 3
 evaluation step 3
 ```
 
-However, if we change the backend to `'dummy'`, we observe that the evaluation steps are not necessarily consecutive, as expected.
+If we change the backend to `'dummy'`, we observe that the evaluation steps are not necessarily consecutive.
 
 ```
 START preprocessing

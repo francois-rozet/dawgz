@@ -42,4 +42,4 @@ def e():
     print('e')
 
 if __name__ == '__main__':
-    schedule(c, e, backend='async', prune=True)
+    schedule(c, e, name='simple.py', backend='async', prune=True)

@@ -30,4 +30,4 @@ for i in range(1, 4):
 evals = [e for t, e in sequence]
 
 if __name__ == '__main__':
-    schedule(*evals, backend='async')
+    schedule(*evals, name='train.py', backend='async')

@@ -3,6 +3,7 @@ r"""Scheduling backends"""
 import asyncio
 import cloudpickle as pickle
 import concurrent.futures as cf
+import json
 import os
 import shutil
 import subprocess
@@ -16,7 +17,7 @@ from pathlib import Path
 from random import random
 from typing import *
 
-from .utils import comma_separated, eprint, future, runpickle, trace, slugify
+from .utils import comma_separated, deepcopy, eprint, future, runpickle, trace, slugify
 from .workflow import Job, cycles, prune as _prune
 
 
@@ -52,6 +53,25 @@ class Scheduler(ABC):
         self.results = {}
         self.traces = {}
 
+    def dump(self) -> None:
+        with open(self.path / 'info.json', 'w') as f:
+            json.dump({
+                'name': self.name,
+                'date': self.date.isoformat(),
+                'backend': self.backend,
+                'jobs': len(self.order),
+                'errors': len(self.traces),
+            }, f, indent=4)
+
+        copy = deepcopy(self)
+        for job in copy.order:
+            del job._f
+            del job.context
+            del job._postconditions
+
+        with open(self.path / 'graph.pkl', 'wb') as f:
+            pickle.dump(copy, f)
+
     def tag(self, job: Job) -> str:
         if job in self.order:
             i = self.order[job]
@@ -59,6 +79,22 @@ class Scheduler(ABC):
             i = self.order[job] = len(self.order)
 
         return f'{i:04d}_{slugify(job.name)}'
+
+    def state(self, job: Job, i: int = None) -> str:
+        if job in self.traces:
+            return 'FAILED'
+        else:
+            return 'COMPLETED'
+
+    def output(self, job: Job, i: int = None) -> Any:
+        result = self.results[job]
+
+        if job.array is None:
+            return result
+        elif type(result) is dict:
+            return result[i]
+        else:
+            return result
 
     @contextmanager
     def context(self) -> None:
@@ -124,7 +160,6 @@ def schedule(
     *jobs,
     backend: str,
     prune: bool = False,
-    warn: bool = True,
     **kwargs,
 ) -> Scheduler:
     for cycle in cycles(*jobs, backward=True):
@@ -135,21 +170,10 @@ def schedule(
 
     scheduler = backends().get(backend)(**kwargs)
     scheduler.wait(*jobs)
+    scheduler.dump()
 
-    if warn and scheduler.traces:
-        traces = ["DAWGZWarning: errors occurred while scheduling"]
-        traces.extend(scheduler.traces.values())
-
-        length = max(
-            len(line)
-            for trc in traces
-            for line in trc.splitlines()
-        )
-
-        sep = '\n' + '-' * length + '\n'
-        text = sep.join(traces)
-
-        eprint(text, end=sep)
+    if scheduler.traces:
+        eprint("DAWGZWarning: errors occurred while scheduling")
 
     return scheduler
 
@@ -265,6 +289,40 @@ class SlurmScheduler(Scheduler):
         # Environment
         self.shell = shell
         self.env = env
+
+    def state(self, job: Job, i: int = None) -> str:
+        if job in self.traces:
+            return 'CANCELLED'
+
+        jobid = self.results[job]
+        jobid = jobid if i is None else f'{jobid}_{i}'
+        text = subprocess.run(
+            ['sacct', '-j', jobid, '-o', 'State', '-n', '-P', '-X'],
+            capture_output=True,
+            check=True,
+            text=True,
+        ).stdout
+
+        states = set(text.splitlines())
+
+        if len(states) > 1:
+            return 'MIXED'
+        else:
+            return states.pop() if states else 'PENDING'
+
+    def output(self, job: Job, i: int = None) -> str:
+        tag = self.tag(job)
+
+        if job.array is None:
+            logfile = self.path / f'{tag}.log'
+        else:
+            logfile = self.path / f'{tag}_{i}.log'
+
+        if logfile.exists():
+            with open(logfile) as f:
+                return f.read()
+        else:
+            return None
 
     async def satisfy(self, job: Job) -> str:
         results = await asyncio.gather(*map(self.submit, job.dependencies))

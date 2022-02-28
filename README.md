@@ -2,9 +2,7 @@
 
 Would you like fully reproducible and reusable experiments that run on HPC clusters as seamlessly as on your machine? Do you have to comment out large parts of your pipelines whenever something failed? Tired of writing and submitting [Slurm](https://en.wikipedia.org/wiki/Slurm_Workload_Manager) scripts? Then `dawgz` is made for you!
 
-Experiments, pipelines, data streams and so on relate to the general concept of workflow, i.e. a set of jobs/tasks whose execution must satisfy some ordering constraints. Workflows implicitely define [directed acyclic graphs](https://en.wikipedia.org/wiki/Directed_acyclic_graph) (DAGs) whose nodes are jobs and edges are their dependencies. Using a graph representation is particularly useful for scheduling and executing the jobs of a workflow while complying to the ordering constraints.
-
-The `dawgz` package provides a lightweight and intuitive interface to declare jobs along with their dependencies, requirements, resources, etc. Then, a single line of code is needed to execute automatically all or part of the workflow, without worrying about dependencies. Importantly, `dawgz` can also hand over the execution to resource management backends like [Slurm](https://en.wikipedia.org/wiki/Slurm_Workload_Manager), which enables to execute the same workflow on your machine and HPC clusters.
+The `dawgz` package provides a lightweight and intuitive Python interface to declare jobs along with their dependencies, requirements, settings, etc. A single line of code is then needed to execute automatically all or part of the workflow, while complying to the dependencies. Importantly, `dawgz` can also hand over the execution to resource management backends like [Slurm](https://en.wikipedia.org/wiki/Slurm_Workload_Manager), which enables to execute the same workflow on your machine and HPC clusters.
 
 ## Installation
 
@@ -22,9 +20,9 @@ pip install git+https://github.com/francois-rozet/dawgz
 
 ## Getting started
 
-In `dawgz`, a job is a Python function decorated by `@dawgz.job`. This decorator allows to define the job's parameters, like its name, whether it is a job array, the resources it needs, etc. The job's dependencies are declared with the `@dawgz.after` decorator. At last, the `dawgz.schedule` function takes care of scheduling the jobs and their dependencies, with a selected backend. These are the core components of `dawgz`'s interface, although additional features are provided.
+In `dawgz`, a job is a Python function decorated by `@dawgz.job`. This decorator allows to define the job's parameters, like its name, whether it is a job array, the resources it needs, etc. The job's dependencies are declared with the `@dawgz.after` decorator. At last, the `dawgz.schedule` function takes care of scheduling the jobs and their dependencies, with a selected backend. For more information, check out the [interface](#Interface) and the [examples](examples/).
 
-Follows a small example demonstrating how one could use `dawgz` to calculate `π` (very roughly) using the [Monte Carlo method](https://en.wikipedia.org/wiki/Monte_Carlo_method). We define two jobs: `generate` and `estimate`. The former is a *job array*, meaning that it is executed concurrently for all values of `i = 0` up to `tasks - 1`. It also defines a [postcondition](https://en.wikipedia.org/wiki/Postconditions) ensuring that the file `pi_{i}.npy` exists after the job's completion. If it is not the case, the job raises an `AssertionError` at runtime. The job `estimate` has `generate` as dependency, meaning it should only start after `generate` succeeded.
+Follows a small example demonstrating how one could use `dawgz` to calculate `π` (very roughly) using the [Monte Carlo method](https://en.wikipedia.org/wiki/Monte_Carlo_method). We define two jobs: `generate` and `estimate`. The former is a *job array*, meaning that it is executed concurrently for all values of `i = 0` up to `tasks - 1`. It also defines a [postcondition](https://en.wikipedia.org/wiki/Postconditions) ensuring that the file `pi_{i}.npy` exists after the job's completion. The job `estimate` has `generate` as dependency, meaning it should only start after `generate` succeeded.
 
 ```python
 import glob
@@ -37,7 +35,7 @@ samples = 10000
 tasks = 5
 
 @ensure(lambda i: os.path.exists(f'pi_{i}.npy'))
-@job(array=tasks, cpus=1, ram='2GB', timelimit='5:00')
+@job(array=tasks, cpus=1, ram='2GB', time='5:00')
 def generate(i: int):
     print(f'Task {i + 1} / {tasks}')
 
@@ -48,7 +46,7 @@ def generate(i: int):
     np.save(f'pi_{i}.npy', within_circle)
 
 @after(generate)
-@job(cpus=2, ram='4GB', timelimit='15:00')
+@job(cpus=2, ram='4GB', time='15:00')
 def estimate():
     files = glob.glob('pi_*.npy')
     stack = np.vstack([np.load(f) for f in files])
@@ -56,7 +54,7 @@ def estimate():
 
     print(f'π ≈ {pi_estimate}')
 
-schedule(estimate, backend='async')
+schedule(estimate, name='pi.py', backend='async')
 ```
 
 Running this script with the `'async'` backend displays
@@ -68,7 +66,7 @@ Task 2 / 5
 Task 3 / 5
 Task 4 / 5
 Task 5 / 5
-π ≈ 3.1418666666666666
+π ≈ 3.141865
 ```
 
 Alternatively, on a Slurm HPC cluster, changing the backend to `'slurm'` results in the following job queue.
@@ -78,11 +76,32 @@ $ squeue -u username
              JOBID PARTITION     NAME     USER ST       TIME  NODES NODELIST(REASON)
            1868832       all estimate username PD       0:00      1 (Dependency)
      1868831_[2-4]       all generate username PD       0:00      1 (Resources)
-         1868831_0       all generate username  R       0:01      1 compute-xx
-         1868831_1       all generate username  R       0:01      1 compute-xx
+         1868831_0       all generate username  R       0:01      1 node-x
+         1868831_1       all generate username  R       0:01      1 node-y
 ```
 
-Check out the the [interface](#Interface) and the [examples](examples/) to discover the features of `dawgz`.
+In addition to the Python interface, `dawgz` provides a simple command-line interface (CLI) to list the scheduled workflows, the jobs of a workflow or the output(s) of a job.
+
+```
+$ dawgz
+    Name    Date                 Backend      Jobs    Errors
+--  ------  -------------------  ---------  ------  --------
+ 0  pi.py   2022-02-28 16:37:58  async           2         0
+ 1  pi.py   2022-02-28 16:38:33  slurm           2         0
+$ dawgz 1
+    Name                ID  State
+--  -------------  -------  -------
+ 0  generate[0-4]  1868831  MIXED
+ 1  estimate       1868832  PENDING
+$ dawgz 1 0
+    Name         State      Output
+--  -----------  ---------  ----------
+ 0  generate[0]  COMPLETED  Task 1 / 5
+ 1  generate[1]  COMPLETED  Task 2 / 5
+ 2  generate[2]  RUNNING
+ 3  generate[3]  RUNNING
+ 4  generate[4]  PENDING
+```
 
 ## Interface
 
@@ -90,10 +109,10 @@ Check out the the [interface](#Interface) and the [examples](examples/) to disco
 
 The package provides five decorators:
 
-* `@dawgz.job` registers a function as a job, with its parameters (name, array, resources, ...). It should always be the first (lowest) decorator. In the following example, `a` is a job with the name `'A'` and a time limit of one hour.
+* `@dawgz.job` registers a function as a job, with its settings (name, array, resources, ...). It should always be the first (lowest) decorator. In the following example, `a` is a job with the name `'A'` and a time limit of one hour.
 
     ```python
-    @job(name='A', timelimit='01:00:00')
+    @job(name='A', time='01:00:00')
     def a():
     ```
 
@@ -114,7 +133,7 @@ The package provides five decorators:
     def c():
     ```
 
-* `@dawgz.ensure` adds a [postcondition](https://en.wikipedia.org/wiki/Postconditions) to a job, i.e. a condition that must be `True` after the execution of the job. Not satisfying all postconditions after execution results in an `AssertionError`. In the following example, `d` ensures that the file `log.txt` exists.
+* `@dawgz.ensure` adds a [postcondition](https://en.wikipedia.org/wiki/Postconditions) to a job, i.e. a condition that must be `True` after the execution of the job. Not satisfying all postconditions after execution results in an `AssertionError` at runtime. In the following example, `d` ensures that the file `log.txt` exists.
 
     ```python
     @ensure(lambda: os.path.exists('log.txt'))
@@ -139,4 +158,4 @@ Currently, `dawgz.schedule` supports three backends: `async`, `dummy` and `slurm
 
 * `async` waits asynchronously for dependencies to complete before executing each job. The jobs are executed by the current Python interpreter.
 * `dummy` is equivalent to `async`, but instead of executing the jobs, prints their name before and after a short (random) sleep time. The main use of `dummy` is debugging.
-* `slurm` submits the jobs to the Slurm workload manager by generating automatically the `sbatch` submission scripts.
+* `slurm` submits the jobs to the Slurm workload manager by automatically generating `sbatch` submission scripts.
