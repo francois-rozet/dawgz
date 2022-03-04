@@ -12,6 +12,7 @@ import uuid
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from datetime import datetime
+from functools import lru_cache
 from inspect import isawaitable
 from pathlib import Path
 from random import random
@@ -290,25 +291,41 @@ class SlurmScheduler(Scheduler):
         self.shell = shell
         self.env = env
 
-    def state(self, job: Job, i: int = None) -> str:
-        if job in self.traces:
-            return 'CANCELLED'
-
-        jobid = self.results[job]
-        jobid = jobid if i is None else f'{jobid}_{i}'
+    @lru_cache(None)
+    def sacct(self, jobid: str) -> Dict[str, str]:
         text = subprocess.run(
-            ['sacct', '-j', jobid, '-o', 'State', '-n', '-P', '-X'],
+            ['sacct', '-j', jobid, '-o', 'JobID,State', '-n', '-P', '-X'],
             capture_output=True,
             check=True,
             text=True,
         ).stdout
 
-        states = set(text.splitlines())
+        return dict(line.split('|') for line in text.splitlines())
+
+    def state(self, job: Job, i: int = None) -> str:
+        if job in self.traces:
+            return 'CANCELLED'
+
+        jobid = self.results[job]
+        table = self.sacct(jobid)
+
+        if job.array is None:
+            return table.get(jobid, None)
+        elif i in job.array:
+            jobid = f'{jobid}_{i}'
+
+            if jobid in table:
+                return table[jobid]
+
+        states = set(table.values())
 
         if len(states) > 1:
-            return 'MIXED'
+            if i in job.array:
+                return 'PENDING'
+            else:
+                return 'MIXED'
         else:
-            return states.pop() if states else 'PENDING'
+            return states.pop()
 
     def output(self, job: Job, i: int = None) -> str:
         tag = self.tag(job)
