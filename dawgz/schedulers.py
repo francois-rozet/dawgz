@@ -5,6 +5,7 @@ import cloudpickle as pickle
 import concurrent.futures as cf
 import json
 import os
+import re
 import shutil
 import subprocess
 import uuid
@@ -331,8 +332,13 @@ class SlurmScheduler(Scheduler):
             logfile = self.path / f'{tag}_{i}.log'
 
         if logfile.exists():
-            with open(logfile) as f:
-                return f.read()
+            with open(logfile, newline='') as f:
+                text = f.read()
+
+            text = re.sub(r'\r+', r'\r', text)
+            text = re.sub(r'.*\r(.+)', r'\1', text)
+
+            return text
         else:
             return None
 
