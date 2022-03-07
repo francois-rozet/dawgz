@@ -58,6 +58,7 @@ class Scheduler(ABC):
         with open(self.path / 'info.json', 'w') as f:
             json.dump({
                 'name': self.name,
+                'id': self.uuid,
                 'date': self.date.isoformat(),
                 'backend': self.backend,
                 'jobs': len(self.order),

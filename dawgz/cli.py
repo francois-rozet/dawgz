@@ -22,13 +22,14 @@ def main() -> str:
 
     parser.add_argument('workflow', default=None, nargs='?', type=int, help="workflow index")
     parser.add_argument('job', default=None, nargs='?', type=int, help="job index")
+    parser.add_argument('indices', default=[], nargs='*', type=int, help="array indices")
 
     args = parser.parse_args()
 
-    return table(args.workflow, args.job)
+    return table(args.workflow, args.job, args.indices)
 
 
-def table(workflow: int = None, job: int = None) -> str:
+def table(workflow: int = None, job: int = None, indices: List[int] = []) -> str:
     path = Path(DIR)
     path.mkdir(parents=True, exist_ok=True)
 
@@ -36,7 +37,7 @@ def table(workflow: int = None, job: int = None) -> str:
     workflows = sorted(path.iterdir(), key=lambda p: p.stat().st_mtime)
 
     if workflow is None:
-        headers = ['Name', 'Date', 'Backend', 'Jobs', 'Errors']
+        headers = ['Name', 'ID', 'Date', 'Backend', 'Jobs', 'Errors']
         rows = []
 
         for index, workflow in enumerate(workflows):
@@ -45,7 +46,7 @@ def table(workflow: int = None, job: int = None) -> str:
 
             info['date'] = datetime.fromisoformat(info['date'])
 
-            rows.append([info[h.lower()] for h in headers])
+            rows.append([info.get(h.lower(), None) for h in headers])
 
         return tabulate(rows, headers, showindex=True)
 
@@ -72,20 +73,25 @@ def table(workflow: int = None, job: int = None) -> str:
     job = jobs[job]
 
     headers = ['Name', 'State', 'Output']
-    indices = [None]
+    array = [None]
 
     if job in workflow.traces:
         rows = [[str(job), workflow.state(job), workflow.traces[job]]]
     elif job.array is None:
         rows = [[str(job), workflow.state(job), workflow.output(job)]]
     else:
-        indices = sorted(job.array)
+        if indices:
+            array = set(indices).intersection(job.array)
+        else:
+            array = job.array
+
+        array = sorted(array)
         rows = [
             [f'{job.name}[{i}]', workflow.state(job, i), workflow.output(job, i)]
-            for i in indices
+            for i in array
         ]
 
-    return tabulate(rows, headers, showindex=indices)
+    return tabulate(rows, headers, showindex=array)
 
 
 if __name__ == '__main__':
