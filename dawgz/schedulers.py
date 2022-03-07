@@ -18,7 +18,7 @@ from pathlib import Path
 from random import random
 from typing import *
 
-from .utils import comma_separated, deepcopy, eprint, future, runpickle, trace, slugify
+from .utils import comma_separated, eprint, future, runpickle, trace, slugify
 from .workflow import Job, cycles, prune as _prune
 
 
@@ -65,14 +65,8 @@ class Scheduler(ABC):
                 'errors': len(self.traces),
             }, f, indent=4)
 
-        copy = deepcopy(self)
-        for job in copy.order:
-            del job._f
-            del job.context
-            del job._postconditions
-
         with open(self.path / 'graph.pkl', 'wb') as f:
-            pickle.dump(copy, f)
+            pickle.dump(self, f)
 
     def tag(self, job: Job) -> str:
         if job in self.order:

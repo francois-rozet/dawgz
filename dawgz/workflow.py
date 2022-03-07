@@ -72,6 +72,14 @@ class Job(Node):
         # Conditions
         self._postconditions = []
 
+    def __getstate__(self) -> Dict:
+        state = self.__dict__.copy()
+
+        for key in ['_f', 'context', '_postconditions']:
+            state.pop(key, None)
+
+        return state
+
     @property
     def f(self) -> Callable:
         name = self.name

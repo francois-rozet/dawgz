@@ -55,12 +55,6 @@ def contextualize(f: FunctionType, /, **context) -> FunctionType:
     return f
 
 
-def deepcopy(obj: Any) -> None:
-    r"""Copies any object in depth"""
-
-    return pickle.loads(pickle.dumps(obj))
-
-
 def eprint(*args, **kwargs) -> None:
     r"""Prints to the standard error stream."""
 
