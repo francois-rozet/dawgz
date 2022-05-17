@@ -69,6 +69,10 @@ class Scheduler(ABC):
         with open(self.path / 'graph.pkl', 'wb') as f:
             pickle.dump(self, f)
 
+    def clear(self) -> None:
+        if self.path.exists() and self.path.is_dir():
+            shutil.rmtree(self.path)
+
     def tag(self, job: Job) -> str:
         if job in self.order:
             i = self.order[job]
@@ -165,9 +169,13 @@ def schedule(
     if prune:
         jobs = _prune(*jobs)
 
-    scheduler = backends().get(backend)(**kwargs)
-    scheduler.wait(*jobs)
-    scheduler.dump()
+    try:
+        scheduler = backends().get(backend)(**kwargs)
+        scheduler.wait(*jobs)
+        scheduler.dump()
+    except:
+        scheduler.clear()
+        raise
 
     if scheduler.traces:
         eprint("DAWGZWarning: errors occurred while scheduling")
