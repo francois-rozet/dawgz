@@ -362,7 +362,7 @@ class SlurmScheduler(Scheduler):
         lines = [
             f"#!{self.shell}",
             f"#",
-            f"#SBATCH --job-name={job.name}",
+            f"#SBATCH --job-name=\"{job.name}\"",
         ]
 
         if job.array is not None:
