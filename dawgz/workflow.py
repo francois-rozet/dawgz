@@ -109,13 +109,13 @@ class Job(Node):
     def dependencies(self) -> Dict[Job, str]:
         return self.parents
 
-    def after(self, *deps, status: str = 'success') -> None:
+    def after(self, *deps: Job, status: str = 'success') -> None:
         assert status in ['success', 'failure', 'any']
 
         for dep in deps:
             self.add_parent(dep, status)
 
-    def detach(self, *deps) -> None:
+    def detach(self, *deps: Job) -> None:
         for dep in deps:
             self.rm_parent(dep)
 
@@ -167,7 +167,7 @@ class Job(Node):
         return True
 
 
-def dfs(*nodes, backward: bool = False) -> Iterator[Node]:
+def dfs(*nodes: Node, backward: bool = False) -> Iterator[Node]:
     queue = list(nodes)
     visited = set()
 
@@ -183,21 +183,15 @@ def dfs(*nodes, backward: bool = False) -> Iterator[Node]:
         visited.add(node)
 
 
-def leafs(*nodes) -> Set[Node]:
-    return {
-        node for node in dfs(*nodes, backward=False)
-        if not node.children
-    }
+def leafs(*nodes: Node) -> Set[Node]:
+    return {node for node in dfs(*nodes, backward=False) if not node.children}
 
 
-def roots(*nodes) -> Set[Node]:
-    return {
-        node for node in dfs(*nodes, backward=True)
-        if not node.parents
-    }
+def roots(*nodes: Node) -> Set[Node]:
+    return {node for node in dfs(*nodes, backward=True) if not node.parents}
 
 
-def cycles(*nodes, backward: bool = False) -> Iterator[List[Node]]:
+def cycles(*nodes: Node, backward: bool = False) -> Iterator[List[Node]]:
     queue = [list(nodes)]
     path = []
     pathset = set()
@@ -227,16 +221,13 @@ def cycles(*nodes, backward: bool = False) -> Iterator[List[Node]]:
         visited.add(node)
 
 
-def prune(*jobs) -> Set[Job]:
+def prune(*jobs: Job) -> Set[Job]:
     for job in dfs(*jobs, backward=True):
         if job.done:
             job.detach(*job.dependencies)
         elif job.array is not None and job.postconditions:
             condition = every(job.postconditions)
-            job.array = {
-                i for i in job.array
-                if not condition(i)
-            }
+            job.array = {i for i in job.array if not condition(i)}
 
         satisfied, unsatisfied, pending = [], [], []
 
@@ -257,10 +248,7 @@ def prune(*jobs) -> Set[Job]:
         else:
             job.unsatisfied.update(unsatisfied)
 
-    return {
-        job for job in jobs
-        if not job.done
-    }
+    return {job for job in jobs if not job.done}
 
 
 class PostconditionNotSatisfiedError(Exception):

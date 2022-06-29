@@ -27,10 +27,34 @@ e
 a
 ```
 
-as well as a warning caused by the failure of `a`.
+as well as a table caused by the failure of `a`.
 
 ```
-DAWGZWarning: errors occurred while scheduling
+    Job    Error
+--  -----  ---------------------------------------------------------------------------------------------------
+ 0  a      Traceback (most recent call last):
+             File "/home/username/env/lib/python3.8/site-packages/dawgz/schedulers.py", line 241, in exec
+               return await call()
+             File "/home/username/env/lib/python3.8/site-packages/dawgz/schedulers.py", line 254, in remote
+               return await asyncio.get_running_loop().run_in_executor(
+             File "/usr/lib/python3.8/concurrent/futures/thread.py", line 57, in run
+               result = self.fn(*self.args, **self.kwargs)
+             File "/home/username/env/lib/python3.8/site-packages/dawgz/utils.py", line 90, in runpickle
+               return pickle.loads(f)(*args, **kwargs)
+             File "/home/username/env/lib/python3.8/site-packages/dawgz/workflow.py", line 90, in call
+               result = f(*args)
+             File "simple.py", line 12, in a
+               raise Exception()
+           Exception
+
+           The above exception was the direct cause of the following exception:
+
+           Traceback (most recent call last):
+             File "/home/username/env/lib/python3.8/site-packages/dawgz/schedulers.py", line 136, in _submit
+               return await self.exec(job)
+             File "/home/username/env/lib/python3.8/site-packages/dawgz/schedulers.py", line 251, in exec
+               raise JobFailedError(str(job)) from e
+           dawgz.schedulers.JobFailedError: a
 ```
 
 ## Train example

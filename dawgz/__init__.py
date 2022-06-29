@@ -14,7 +14,7 @@ def job(f: Callable = None, /, **kwargs) -> Union[Callable, Job]:
         return Job(f, **kwargs)
 
 
-def after(*deps, status: str = 'success') -> Callable:
+def after(*deps: Job, status: str = 'success') -> Callable:
     def decorator(self: Job) -> Job:
         self.after(*deps, status=status)
         return self

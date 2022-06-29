@@ -16,7 +16,7 @@ def generate(i: int):
 
     x = np.random.random(samples)
     y = np.random.random(samples)
-    within_circle = x ** 2 + y ** 2 <= 1
+    within_circle = x**2 + y**2 <= 1
 
     np.save(f'pi_{i}.npy', within_circle)
 

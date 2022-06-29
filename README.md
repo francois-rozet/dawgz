@@ -41,7 +41,7 @@ def generate(i: int):
 
     x = np.random.random(samples)
     y = np.random.random(samples)
-    within_circle = x ** 2 + y ** 2 <= 1
+    within_circle = x**2 + y**2 <= 1
 
     np.save(f'pi_{i}.npy', within_circle)
 
@@ -84,10 +84,10 @@ In addition to the Python interface, `dawgz` provides a simple command-line inte
 
 ```
 $ dawgz
-    Name    Date                 Backend      Jobs    Errors
---  ------  -------------------  ---------  ------  --------
- 0  pi.py   2022-02-28 16:37:58  async           2         0
- 1  pi.py   2022-02-28 16:38:33  slurm           2         0
+    Name    ID        Date                 Backend      Jobs    Errors
+--  ------  --------  -------------------  ---------  ------  --------
+ 0  pi.py   8094aa20  2022-02-28 16:37:58  async           2         0
+ 1  pi.py   9cc409fd  2022-02-28 16:38:33  slurm           2         0
 $ dawgz 1
     Name                ID  State
 --  -------------  -------  -------

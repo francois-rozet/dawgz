@@ -3,7 +3,7 @@ r"""Scheduling backends"""
 import asyncio
 import cloudpickle as pickle
 import concurrent.futures as cf
-import json
+import csv
 import os
 import re
 import shutil
@@ -17,6 +17,7 @@ from functools import lru_cache
 from inspect import isawaitable
 from pathlib import Path
 from random import random
+from tabulate import tabulate
 from typing import *
 
 from .utils import comma_separated, eprint, future, runpickle, trace, slugify
@@ -56,22 +57,18 @@ class Scheduler(ABC):
         self.traces = {}
 
     def dump(self) -> None:
-        with open(self.path / 'info.json', 'w') as f:
-            json.dump({
-                'name': self.name,
-                'id': self.uuid,
-                'date': self.date.isoformat(),
-                'backend': self.backend,
-                'jobs': len(self.order),
-                'errors': len(self.traces),
-            }, f, indent=4)
-
-        with open(self.path / 'graph.pkl', 'wb') as f:
+        with open(self.path / 'dump.pkl', 'wb') as f:
             pickle.dump(self, f)
 
-    def clear(self) -> None:
-        if self.path.exists() and self.path.is_dir():
-            shutil.rmtree(self.path)
+        with open(self.path.parent / 'workflows.csv', 'a', newline='') as f:
+            csv.writer(f).writerow((
+                self.name,
+                self.uuid,
+                self.date,
+                self.backend,
+                len(self.order),
+                len(self.traces),
+            ))
 
     def tag(self, job: Job) -> str:
         if job in self.order:
@@ -104,11 +101,11 @@ class Scheduler(ABC):
         finally:
             pass
 
-    def wait(self, *jobs) -> None:
+    def wait(self, *jobs: Job) -> None:
         with self.context():
             asyncio.run(self._wait(*jobs))
 
-    async def _wait(self, *jobs) -> None:
+    async def _wait(self, *jobs: Job) -> None:
         if jobs:
             await asyncio.wait(map(self.submit, jobs))
             await asyncio.wait(map(self.submit, self.order))
@@ -147,20 +144,11 @@ class Scheduler(ABC):
         pass
 
 
-def backends() -> Dict[str, Scheduler]:
-    return {
-        s.backend: s for s in [
-            AsyncScheduler,
-            DummyScheduler,
-            SlurmScheduler,
-        ]
-    }
-
-
 def schedule(
-    *jobs,
+    *jobs: Job,
     backend: str,
     prune: bool = False,
+    verbose: bool = True,
     **kwargs,
 ) -> Scheduler:
     for cycle in cycles(*jobs, backward=True):
@@ -169,16 +157,21 @@ def schedule(
     if prune:
         jobs = _prune(*jobs)
 
-    try:
-        scheduler = backends().get(backend)(**kwargs)
-        scheduler.wait(*jobs)
-        scheduler.dump()
-    except:
-        scheduler.clear()
-        raise
+    backends = {
+        s.backend: s
+        for s in (
+            AsyncScheduler,
+            DummyScheduler,
+            SlurmScheduler,
+        )
+    }
 
-    if scheduler.traces:
-        eprint("DAWGZWarning: errors occurred while scheduling")
+    scheduler = backends.get(backend)(**kwargs)
+    scheduler.wait(*jobs)
+    scheduler.dump()
+
+    if scheduler.traces and verbose:
+        eprint(tabulate(scheduler.traces.items(), ('Job', 'Error'), showindex=True))
 
     return scheduler
 
@@ -253,9 +246,7 @@ class AsyncScheduler(Scheduler):
             raise JobFailedError(str(job)) from e
 
     async def remote(self, f: Callable, /, *args) -> Any:
-        return await asyncio.get_running_loop().run_in_executor(
-            self.executor, f, *args
-        )
+        return await asyncio.get_running_loop().run_in_executor(self.executor, f, *args)
 
 
 class DummyScheduler(AsyncScheduler):
