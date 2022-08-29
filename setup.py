@@ -10,7 +10,7 @@ with open('requirements.txt', 'r') as f:
 
 setuptools.setup(
     name='dawgz',
-    version='0.4.0',
+    version='0.4.1',
     packages=setuptools.find_packages(),
     description='Directed Acyclic Workflow Graph Scheduling',
     keywords='acyclic workflow graph scheduling reproducible-science slurm hpc hpc-tools',
@@ -37,7 +37,7 @@ setuptools.setup(
     python_requires='>=3.8',
     entry_points={
         'console_scripts': [
-            'dawgz = dawgz.cli:main',
+            'dawgz = dawgz.__main__:main',
         ],
     },
 )

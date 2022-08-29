@@ -85,14 +85,36 @@ class Scheduler(ABC):
             return 'COMPLETED'
 
     def output(self, job: Job, i: int = None) -> Any:
-        result = self.results[job]
-
         if job.array is None:
-            return result
-        elif type(result) is dict:
-            return result[i]
+            return self.results[job]
         else:
-            return result
+            return self.results[job].get(i)
+
+    def report(self, job: Job = None) -> str:
+        if job is None:
+            headers = ('Name', 'State')
+            rows = [
+                (str(job), self.state(job))
+                for job in self.order
+            ]
+
+            return tabulate(rows, headers, showindex=True)
+        else:
+            headers = ('Name', 'State', 'Output')
+            array = [None]
+
+            if job in self.traces:
+                rows = [(str(job), self.state(job), self.traces[job])]
+            elif job.array is None:
+                rows = [(str(job), self.state(job), self.output(job))]
+            else:
+                array = sorted(job.array)
+                rows = [
+                    (f'{job.name}[{i}]', self.state(job, i), self.output(job, i))
+                    for i in array
+                ]
+
+            return tabulate(rows, headers, showindex=array)
 
     @contextmanager
     def context(self) -> None:
@@ -148,7 +170,7 @@ def schedule(
     *jobs: Job,
     backend: str,
     prune: bool = False,
-    verbose: bool = True,
+    quiet: bool = False,
     **kwargs,
 ) -> Scheduler:
     for cycle in cycles(*jobs, backward=True):
@@ -170,7 +192,7 @@ def schedule(
     scheduler.wait(*jobs)
     scheduler.dump()
 
-    if scheduler.traces and verbose:
+    if scheduler.traces and not quiet:
         eprint(tabulate(scheduler.traces.items(), ('Job', 'Error'), showindex=True))
 
     return scheduler
@@ -259,6 +281,8 @@ class DummyScheduler(AsyncScheduler):
         await asyncio.sleep(random())
         print(f"END   {job}")
 
+        return None if job.array is None else {}
+
 
 class SlurmScheduler(Scheduler):
     r"""Slurm scheduler"""
@@ -340,6 +364,23 @@ class SlurmScheduler(Scheduler):
             return text
         else:
             return None
+
+    def report(self, job: Job = None) -> str:
+        if job is None:
+            headers = ('Name', 'ID', 'State')
+            rows = []
+
+            for job in self.order:
+                if job in self.traces:
+                    jobid = None
+                else:
+                    jobid = self.results[job]
+
+                rows.append((str(job), jobid, self.state(job)))
+
+            return tabulate(rows, headers, showindex=True)
+        else:
+            return super().report(job)
 
     async def satisfy(self, job: Job) -> str:
         results = await asyncio.gather(*map(self.submit, job.dependencies))
