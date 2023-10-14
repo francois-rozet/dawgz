@@ -129,8 +129,8 @@ class Scheduler(ABC):
 
     async def _wait(self, *jobs: Job) -> None:
         if jobs:
-            await asyncio.wait(map(self.submit, jobs))
-            await asyncio.wait(map(self.submit, self.order))
+            await asyncio.wait(map(asyncio.create_task, map(self.submit, jobs)))
+            await asyncio.wait(map(asyncio.create_task, map(self.submit, self.order)))
 
     async def submit(self, job: Job) -> Any:
         if job in self.results:
