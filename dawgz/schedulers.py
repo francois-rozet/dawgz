@@ -398,7 +398,10 @@ class SlurmScheduler(Scheduler):
         ]
 
         if job.array is not None:
-            lines.append("#SBATCH --array=" + comma_separated(job.array))
+            arrayline = "#SBATCH --array=" + comma_separated(job.array)
+            if "simtasks" in self.settings:
+                arrayline += f"%{self.settings['simtasks']}"
+            lines.append(arrayline)
 
         tag = self.tag(job)
 
