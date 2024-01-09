@@ -415,7 +415,6 @@ class SlurmScheduler(Scheduler):
         ## Settings
         settings = self.settings.copy()
         settings.update(job.settings)
-        settings.pop("simtasks", None)
 
         assert 'clusters' not in settings, "multi-cluster operations not supported"
 
