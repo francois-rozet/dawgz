@@ -398,7 +398,10 @@ class SlurmScheduler(Scheduler):
         ]
 
         if job.array is not None:
-            lines.append("#SBATCH --array=" + comma_separated(job.array))
+            line = "#SBATCH --array=" + comma_separated(job.array)
+            if 'maxsim' in job.settings:
+                line += f"%{job.settings.pop('maxsim')}"
+            lines.append(line)
 
         tag = self.tag(job)
 
