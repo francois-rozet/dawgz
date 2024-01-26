@@ -4,7 +4,7 @@ from __future__ import annotations
 from functools import cached_property
 from typing import *
 
-from .utils import accepts, comma_separated, contextualize, every
+from .utils import accepts, comma_separated, every, pickle
 
 
 class Node(object):
@@ -54,12 +54,9 @@ class Job(Node):
             assert len(array) > 0, "array should not be empty"
             assert accepts(f, 0), "job array should expect an argument"
 
-        self._f = f
+        self._f = pickle.dumps(f)
         self.name = f.__name__ if name is None else name
         self.array = array
-
-        # Context
-        self.context = {}
 
         # Settings
         self.settings = settings.copy()
@@ -75,29 +72,33 @@ class Job(Node):
     def __getstate__(self) -> Dict:
         state = self.__dict__.copy()
 
-        for key in ['_f', 'context', '_postconditions']:
+        for key in ['_f', '_postconditions']:
             state.pop(key, None)
 
         return state
 
     @property
     def f(self) -> Callable:
-        name = self.name
-        f = contextualize(self._f, **self.context)
-        post = every(self.postconditions)
+        return pickle.loads(self._f)
 
-        def call(*args) -> Any:
+    @property
+    def run(self) -> Callable:
+        name = self.name
+        f = self.f
+        cond = every(self.postconditions)
+
+        def fun(*args) -> Any:
             result = f(*args)
 
-            if not post(*args):
+            if not cond(*args):
                 raise PostconditionNotSatisfiedError(f"{name}{list(args) if args else ''}")
 
             return result
 
-        return call
+        return fun
 
     def __call__(self, *args) -> Any:
-        return self.f(*args)
+        return self.run(*args)
 
     def __str__(self) -> str:
         if self.array is None:
@@ -135,14 +136,11 @@ class Job(Node):
         else:
             assert accepts(condition, 0), "postcondition should expect an argument"
 
-        self._postconditions.append(condition)
+        self._postconditions.append(pickle.dumps(condition))
 
     @property
     def postconditions(self) -> List[Callable]:
-        return [
-            contextualize(condition, **self.context)
-            for condition in self._postconditions
-        ]
+        return list(map(pickle.loads, self._postconditions))
 
     @cached_property
     def done(self) -> bool:

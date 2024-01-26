@@ -1,8 +1,8 @@
 # Directed Acyclic Workflow Graph Scheduling
 
-Would you like fully reproducible and reusable experiments that run on HPC clusters as seamlessly as on your machine? Do you have to comment out large parts of your pipelines whenever something failed? Tired of writing and submitting [Slurm](https://en.wikipedia.org/wiki/Slurm_Workload_Manager) scripts? Then `dawgz` is made for you!
+Would you like fully reproducible and reusable experiments that run on HPC clusters as seamlessly as on your machine? Do you have to comment out large parts of your pipelines whenever something failed? Tired of writing and submitting [Slurm](https://wikipedia.org/wiki/Slurm_Workload_Manager) scripts? Then `dawgz` is made for you!
 
-The `dawgz` package provides a lightweight and intuitive Python interface to declare jobs along with their dependencies, requirements, settings, etc. A single line of code is then needed to execute automatically all or part of the workflow, while complying to the dependencies. Importantly, `dawgz` can also hand over the execution to resource management backends like [Slurm](https://en.wikipedia.org/wiki/Slurm_Workload_Manager), which enables to execute the same workflow on your machine and HPC clusters.
+The `dawgz` package provides a lightweight and intuitive Python interface to declare jobs along with their dependencies, requirements, settings, etc. A single line of code is then needed to execute automatically all or part of the workflow, while complying to the dependencies. Importantly, `dawgz` can also hand over the execution to resource management backends like [Slurm](https://wikipedia.org/wiki/Slurm_Workload_Manager), which enables to execute the same workflow on your machine and HPC clusters.
 
 ## Installation
 
@@ -107,7 +107,7 @@ $ dawgz 1 0
 
 ### Decorators
 
-The package provides five decorators:
+The package provides four decorators:
 
 * `@dawgz.job` registers a function as a job, with its settings (name, array, resources, ...). It should always be the first (lowest) decorator. In the following example, `a` is a job with the name `'A'` and a time limit of one hour.
 
@@ -115,6 +115,14 @@ The package provides five decorators:
     @job(name='A', time='01:00:00')
     def a():
     ```
+
+    All keyword arguments other than `name` and `array` are passed as settings to the scheduler. For example, with the `slurm` backend, the following would lead to a job array of 64 tasks, with a maximum of 3 simultaneous tasks running exclusively on `'tesla'` or `'quadro'` partitions.
+
+    ```python
+    @job(array=64, maxsim=3, partition='tesla,quadro')
+    ```
+
+    Importantly, a job is **shipped with its context**, meaning that modifying global variables after it has been created does not affect its execution.
 
 * `@dawgz.after` adds one or more dependencies to a job. By default, the job waits for its dependencies to complete with success. The desired status can be set to `'success'` (default), `'failure'` or `'any'`. In the following example, `b` waits for `a` to complete with `'failure'`.
 
@@ -133,7 +141,7 @@ The package provides five decorators:
     def c():
     ```
 
-* `@dawgz.ensure` adds a [postcondition](https://en.wikipedia.org/wiki/Postconditions) to a job, i.e. a condition that must be `True` after the execution of the job. Not satisfying all postconditions after execution results in an `AssertionError` at runtime. In the following example, `d` ensures that the file `log.txt` exists.
+* `@dawgz.ensure` adds a [postcondition](https://wikipedia.org/wiki/Postconditions) to a job, i.e. a condition that must be `True` after the execution of the job. Not satisfying all postconditions after execution results in an `AssertionError` at runtime. In the following example, `d` ensures that the file `log.txt` exists.
 
     ```python
     @ensure(lambda: os.path.exists('log.txt'))
@@ -141,16 +149,7 @@ The package provides five decorators:
     def d():
     ```
 
-    > Traditionally, postconditions are only **necessary** indicators that the job completed with success. In `dawgz`, they are considered both necessary and **sufficient** indicators. Therefore, postconditions can be used to detect jobs that have already been executed and prune them out from the workflow, if requested.
-
-* `@dawgz.context` specifies the context of a job, i.e. the values of (non-local) variables on which it depends. Providing a context prevents the global value of variables from affecting the job execution. In the following example, the variable `var` is set to always be `42` within `e`.
-
-    ```python
-    @context(var=42)
-    @job
-    def e():
-        print(var)
-    ```
+    Traditionally, postconditions are only **necessary** indicators that a task completed with success. In `dawgz`, they are considered both necessary and **sufficient** indicators. Therefore, postconditions can be used to detect jobs that have already been executed and prune them out of the workflow. To do so, set `prune=True` in `dawgz.schedule`.
 
 ### Backends
 

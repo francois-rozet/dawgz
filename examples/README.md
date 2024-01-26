@@ -8,7 +8,7 @@ In [`simple.py`](simple.py) we define a workflow composed of 5 jobs. In summary,
 * `c` waits for `a` to complete with success.
 * `c` ensures that `2 + 2 == 2 * 2` and `1 + 2 + 3 == 1 * 2 * 3`.
 * `d` waits for `b` to complete with `'success'`.
-* `d` ensures that `finished[i] == True` after successful completion.
+* `d` ensures that `i != 42` or `{i}.log` exists after successful completion.
 * `e` waits for `'any'` of its dependencies (either `a` or `d`) to complete.
 
 In `schedule`, the dependency graph of `c` and `e` is pruned with respect to the postconditions.
@@ -56,6 +56,14 @@ as well as a table caused by the failure of `a`.
                raise JobFailedError(str(job)) from e
            dawgz.schedulers.JobFailedError: a
 ```
+
+However, because `schedule` is called with `prune=True`, running the script again leads to the following output
+
+```
+e
+```
+
+as the file `42.log` now exists and `e` only requires `a` or `d` to complete.
 
 ## Train example
 

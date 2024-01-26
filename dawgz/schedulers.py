@@ -1,7 +1,6 @@
 r"""Scheduling backends"""
 
 import asyncio
-import cloudpickle as pickle
 import concurrent.futures as cf
 import csv
 import os
@@ -20,7 +19,7 @@ from random import random
 from tabulate import tabulate
 from typing import *
 
-from .utils import comma_separated, eprint, future, runpickle, trace, slugify
+from .utils import comma_separated, eprint, future, pickle, runpickle, trace, slugify
 from .workflow import Job, cycles, prune as _prune
 
 
@@ -250,7 +249,7 @@ class AsyncScheduler(Scheduler):
                 raise DependencyNeverSatisfiedError(str(job))
 
     async def exec(self, job: Job) -> Any:
-        dump = pickle.dumps(job.f)
+        dump = pickle.dumps(job.run)
         call = lambda *args: self.remote(runpickle, dump, *args)
 
         try:
@@ -459,7 +458,7 @@ class SlurmScheduler(Scheduler):
         pklfile = self.path / f'{tag}.pkl'
 
         with open(pklfile, 'wb') as f:
-            pickle.dump(job.f, f)
+            pickle.dump(job.run, f)
 
         args = '' if job.array is None else '$SLURM_ARRAY_TASK_ID'
 
