@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dawgz"
+description = "Directed Acyclic Workflow Graph Scheduling"
+authors = [
+  {name = "François Rozet", email = "francois.rozet@outlook.com"},
+  {name = "Joeri Hermans"},
+]
+classifiers = [
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Natural Language :: English",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+]
+dynamic = ["dependencies", "version"]
+keywords = ["workflow", "scheduling", "slurm", "hpc"]
+readme = "README.md"
+requires-python = ">=3.8"
+
+[project.scripts]
+dawgz = "dawgz.__main__:main"
+
+[project.urls]
+documentation = "https://github.com/francois-rozet/dawgz"
+source = "https://github.com/francois-rozet/dawgz"
+tracker = "https://github.com/francois-rozet/dawgz/issues"
+
+[tool.setuptools.dynamic]
+dependencies = {file = "requirements.txt"}
+version = {attr = "dawgz.__version__"}
