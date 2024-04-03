@@ -16,18 +16,18 @@ class Node(object):
         self.children = {}
         self.parents = {}
 
-    def add_child(self, node: Node, edge: Any = None) -> None:
+    def add_child(self, node: Node, edge: Any = None):
         self.children[node] = edge
         node.parents[self] = edge
 
-    def add_parent(self, node: Node, edge: Any = None) -> None:
+    def add_parent(self, node: Node, edge: Any = None):
         node.add_child(self, edge)
 
-    def rm_child(self, node: Node) -> None:
+    def rm_child(self, node: Node):
         del self.children[node]
         del node.parents[self]
 
-    def rm_parent(self, node: Node) -> None:
+    def rm_parent(self, node: Node):
         node.rm_child(self)
 
 
@@ -110,13 +110,13 @@ class Job(Node):
     def dependencies(self) -> Dict[Job, str]:
         return self.parents
 
-    def after(self, *deps: Job, status: str = 'success') -> None:
+    def after(self, *deps: Job, status: str = 'success'):
         assert status in ['success', 'failure', 'any']
 
         for dep in deps:
             self.add_parent(dep, status)
 
-    def detach(self, *deps: Job) -> None:
+    def detach(self, *deps: Job):
         for dep in deps:
             self.rm_parent(dep)
 
@@ -125,12 +125,12 @@ class Job(Node):
         return self._waitfor
 
     @waitfor.setter
-    def waitfor(self, mode: str = 'all') -> None:
+    def waitfor(self, mode: str = 'all'):
         assert mode in ['all', 'any']
 
         self._waitfor = mode
 
-    def ensure(self, condition: Callable) -> None:
+    def ensure(self, condition: Callable):
         if self.array is None:
             assert accepts(condition), "postcondition should not expect arguments"
         else:

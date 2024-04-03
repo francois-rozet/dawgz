@@ -42,7 +42,7 @@ def comma_separated(integers: Iterable[int]) -> str:
     return ','.join(map(fmt, *zip(*intervals)))
 
 
-def eprint(*args, **kwargs) -> None:
+def eprint(*args, **kwargs):
     r"""Prints to the standard error stream."""
 
     print(*args, file=sys.stderr, **kwargs)

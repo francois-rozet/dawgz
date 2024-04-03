@@ -55,7 +55,7 @@ class Scheduler(ABC):
         self.results = {}
         self.traces = {}
 
-    def dump(self) -> None:
+    def dump(self):
         with open(self.path / 'dump.pkl', 'wb') as f:
             pickle.dump(self, f)
 
@@ -116,17 +116,17 @@ class Scheduler(ABC):
             return tabulate(rows, headers, showindex=array)
 
     @contextmanager
-    def context(self) -> None:
+    def context(self):
         try:
             yield None
         finally:
             pass
 
-    def wait(self, *jobs: Job) -> None:
+    def wait(self, *jobs: Job):
         with self.context():
             asyncio.run(self._wait(*jobs))
 
-    async def _wait(self, *jobs: Job) -> None:
+    async def _wait(self, *jobs: Job):
         if jobs:
             await asyncio.wait(map(asyncio.create_task, map(self.submit, jobs)))
             await asyncio.wait(map(asyncio.create_task, map(self.submit, self.order)))
@@ -157,7 +157,7 @@ class Scheduler(ABC):
         return await self.exec(job)
 
     @abstractmethod
-    async def satisfy(self, job: Job) -> None:
+    async def satisfy(self, job: Job):
         pass
 
     @abstractmethod
@@ -208,7 +208,7 @@ class AsyncScheduler(Scheduler):
         self.pools = pools
 
     @contextmanager
-    def context(self) -> None:
+    def context(self):
         if self.pools is None:
             self.executor = cf.ThreadPoolExecutor()
         else:
@@ -219,7 +219,7 @@ class AsyncScheduler(Scheduler):
         finally:
             del self.executor
 
-    async def satisfy(self, job: Job) -> None:
+    async def satisfy(self, job: Job):
         pending = [
             asyncio.gather(self.submit(dep), future(status))
             for dep, status in job.dependencies.items()
@@ -275,7 +275,7 @@ class DummyScheduler(AsyncScheduler):
 
     backend = 'dummy'
 
-    async def exec(self, job: Job) -> None:
+    async def exec(self, job: Job):
         print(f"START {job}")
         await asyncio.sleep(random())
         print(f"END   {job}")
