@@ -1,5 +1,7 @@
 r"""Scheduling backends"""
 
+from __future__ import annotations
+
 import asyncio
 import concurrent.futures as cf
 import csv
@@ -24,6 +26,7 @@ from .workflow import Job, cycles, prune as _prune
 
 
 DIR = os.environ.get('DAWGZ_DIR', '.dawgz')
+DIR = Path(DIR).resolve()
 
 
 class Scheduler(ABC):
@@ -43,7 +46,7 @@ class Scheduler(ABC):
         self.date = datetime.now().replace(microsecond=0)
         self.uuid = uuid.uuid4().hex
 
-        self.path = Path(DIR).resolve() / self.uuid
+        self.path = DIR / self.uuid
         self.path.mkdir(parents=True)
 
         # Settings
@@ -68,6 +71,11 @@ class Scheduler(ABC):
                 len(self.order),
                 len(self.traces),
             ))
+
+    @staticmethod
+    def load(path: Path) -> Scheduler:
+        with open(path / 'dump.pkl', 'rb') as f:
+            return pickle.load(f)
 
     def tag(self, job: Job) -> str:
         if job in self.order:
@@ -114,6 +122,9 @@ class Scheduler(ABC):
                 ]
 
             return tabulate(rows, headers, showindex=array)
+
+    def cancel(self, job: Job = None) -> str:
+        raise NotImplementedError(f"'cancel' is not implemented for the {self.backend} backend.")
 
     @contextmanager
     def context(self):
@@ -380,6 +391,20 @@ class SlurmScheduler(Scheduler):
             return tabulate(rows, headers, showindex=True)
         else:
             return super().report(job)
+
+    def cancel(self, job: Job = None) -> str:
+        if job is None:
+            jobids = list(self.results.values())
+        else:
+            jobid = self.results[job]
+            jobids = [jobid]
+
+        return subprocess.run(
+            ['scancel', '-v', *jobids],
+            capture_output=True,
+            check=True,
+            text=True,
+        ).stderr.strip('\n')
 
     async def satisfy(self, job: Job) -> str:
         results = await asyncio.gather(*map(self.submit, job.dependencies))
