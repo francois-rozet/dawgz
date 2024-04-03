@@ -21,7 +21,7 @@ from random import random
 from tabulate import tabulate
 from typing import *
 
-from .utils import comma_separated, eprint, future, pickle, runpickle, trace, slugify
+from .utils import comma_separated, eprint, future, pickle, runpickle, trace, slugify, wrap
 from .workflow import Job, cycles, prune as _prune
 
 
@@ -120,6 +120,15 @@ class Scheduler(ABC):
                     (f'{job.name}[{i}]', self.state(job, i), self.output(job, i))
                     for i in array
                 ]
+
+            rows = [
+                (
+                    name,
+                    state,
+                    None if output is None else wrap(output, width=120),
+                )
+                for name, state, output in rows
+            ]
 
             return tabulate(rows, headers, showindex=array)
 

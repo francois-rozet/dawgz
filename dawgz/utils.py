@@ -100,3 +100,11 @@ def trace(error: Exception) -> str:
     )
 
     return ''.join(lines).strip('\n')
+
+
+def wrap(text: str, width: int) -> str:
+    return '\n'.join(
+        line[i:i + width]
+        for line in text.split('\n')
+        for i in range(0, len(line), width)
+    )
