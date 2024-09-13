@@ -14,15 +14,15 @@ import uuid
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from datetime import datetime
-from functools import lru_cache
+from functools import lru_cache, partial
 from inspect import isawaitable
 from pathlib import Path
 from random import random
 from tabulate import tabulate
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, Sequence
 
 # isort: split
-from .utils import comma_separated, eprint, future, pickle, runpickle, slugify, trace, wrap
+from .utils import comma_separated, future, pickle, runpickle, slugify, trace, wrap
 from .workflow import Job, cycles
 from .workflow import prune as _prune
 
@@ -31,9 +31,9 @@ DIR = Path(DIR).resolve()
 
 
 class Scheduler(ABC):
-    r"""Abstract workflow scheduler"""
+    r"""Abstract workflow scheduler."""
 
-    backend = None
+    backend: str = None
 
     def __init__(
         self,
@@ -41,6 +41,13 @@ class Scheduler(ABC):
         settings: Dict[str, Any] = {},  # noqa: B006
         **kwargs,
     ):
+        r"""
+        Arguments:
+            name: The name of the workflow.
+            settings: A dictionnary of settings.
+            kwargs: Keyword arguments added to `settings`.
+        """
+
         super().__init__()
 
         self.name = name
@@ -63,7 +70,7 @@ class Scheduler(ABC):
         with open(self.path / "dump.pkl", "wb") as f:
             pickle.dump(self, f)
 
-        with open(self.path.parent / "workflows.csv", "a", newline="") as f:
+        with open(self.path.parent / "workflows.csv", mode="a", newline="") as f:
             csv.writer(f).writerow((
                 self.name,
                 self.uuid,
@@ -139,11 +146,17 @@ class Scheduler(ABC):
         finally:
             pass
 
-    def wait(self, *jobs: Job):
-        with self.context():
-            asyncio.run(self._wait(*jobs))
+    def __call__(self, *jobs: Job, prune: bool = False):
+        for cycle in cycles(*jobs, backward=True):
+            raise CyclicDependencyGraphError(" <- ".join(map(str, cycle)))
 
-    async def _wait(self, *jobs: Job):
+        if prune:
+            jobs = _prune(*jobs)
+
+        with self.context():
+            asyncio.run(self.wait(*jobs))
+
+    async def wait(self, *jobs: Job):
         if jobs:
             await asyncio.wait(map(asyncio.create_task, map(self.submit, jobs)))
             await asyncio.wait(map(asyncio.create_task, map(self.submit, self.order)))
@@ -182,45 +195,24 @@ class Scheduler(ABC):
         pass
 
 
-def schedule(
-    *jobs: Job,
-    backend: str,
-    prune: bool = False,
-    quiet: bool = False,
-    **kwargs,
-) -> Scheduler:
-    for cycle in cycles(*jobs, backward=True):
-        raise CyclicDependencyGraphError(" <- ".join(map(str, cycle)))
-
-    if prune:
-        jobs = _prune(*jobs)
-
-    backends = {
-        s.backend: s
-        for s in (
-            AsyncScheduler,
-            DummyScheduler,
-            SlurmScheduler,
-        )
-    }
-
-    scheduler = backends.get(backend)(**kwargs)
-    scheduler.wait(*jobs)
-    scheduler.dump()
-
-    if scheduler.traces and not quiet:
-        eprint(tabulate(scheduler.traces.items(), ("Job", "Error"), showindex=True))
-
-    return scheduler
-
-
 class AsyncScheduler(Scheduler):
-    r"""Asynchronous scheduler"""
+    r"""Asynchronous scheduler.
 
-    backend = "async"
+    Jobs are executed asynchronously. A job is launched as soon as its dependencies are
+    satisfied.
+    """
 
-    def __init__(self, pools: int = None, **kwargs):
-        super().__init__(**kwargs)
+    backend: str = "async"
+
+    def __init__(self, name: str = None, pools: int = None, **kwargs):
+        r"""
+        Arguments:
+            name: The name of the workflow.
+            pools: The number of processing pools. If `None`, use threads instead.
+            kwargs: Keyword arguments passed to :class:`Scheduler`.
+        """
+
+        super().__init__(name=name, **kwargs)
 
         self.pools = pools
 
@@ -267,7 +259,7 @@ class AsyncScheduler(Scheduler):
 
     async def exec(self, job: Job) -> Any:
         dump = pickle.dumps(job.run)
-        call = lambda *args: self.remote(runpickle, dump, *args)
+        call = partial(self.remote, runpickle, dump)
 
         try:
             if job.array is None:
@@ -288,9 +280,13 @@ class AsyncScheduler(Scheduler):
 
 
 class DummyScheduler(AsyncScheduler):
-    r"""Dummy scheduler"""
+    r"""Dummy asynchronous scheduler.
 
-    backend = "dummy"
+    Jobs are scheduled asynchronously, but instead of executing them, their name is
+    printed before and after a short (random) sleep time. Useful for debugging.
+    """
+
+    backend: str = "dummy"
 
     async def exec(self, job: Job):
         print(f"START {job}")
@@ -301,10 +297,19 @@ class DummyScheduler(AsyncScheduler):
 
 
 class SlurmScheduler(Scheduler):
-    r"""Slurm scheduler"""
+    r"""Slurm scheduler.
 
-    backend = "slurm"
-    translate = {
+    Jobs are submitted to the Slurm queue. Resources are allocated by the Slurm manager
+    according to the job and scheduler settings. Job settings have precendence over
+    scheduler settings.
+
+    Most settings (e.g. `account`, `export`, `partition`) are passed directly to
+    `sbatch`. A few settings (e.g. `cpus`, `gpus`, `ram`) are translated into their
+    `sbatch` equivalents.
+    """
+
+    backend: str = "slurm"
+    translate: Dict[str, str] = {
         "cpus": "cpus-per-task",
         "gpus": "gpus-per-task",
         "ram": "mem",
@@ -314,11 +319,20 @@ class SlurmScheduler(Scheduler):
 
     def __init__(
         self,
+        name: str = None,
         shell: str = os.environ.get("SHELL", "/bin/sh"),
-        env: List[str] = [],  # noqa: B006
+        env: Sequence[str] = [],  # noqa: B006
         **kwargs,
     ):
-        super().__init__(**kwargs)
+        r"""
+        Arguments:
+            name: The name of the workflow.
+            shell: The scripting shell.
+            env: A sequence of commands to execute before each job is launched.
+            kwargs: Keyword arguments passed to :class:`Scheduler`.
+        """
+
+        super().__init__(name=name, **kwargs)
 
         assert shutil.which("sbatch") is not None, "sbatch executable not found"
 
@@ -493,7 +507,7 @@ class SlurmScheduler(Scheduler):
         args = "" if job.array is None else "$SLURM_ARRAY_TASK_ID"
 
         lines.extend([
-            "python << EOC",
+            "srun python << EOC",
             "import pickle",
             f"with open(r'{pklfile}', 'rb') as f:",
             f"    pickle.load(f)({args})",
