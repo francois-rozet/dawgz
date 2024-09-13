@@ -34,27 +34,27 @@ from dawgz import job, after, ensure, schedule
 samples = 10000
 tasks = 5
 
-@ensure(lambda i: os.path.exists(f'pi_{i}.npy'))
-@job(array=tasks, cpus=1, ram='2GB', time='5:00')
+@ensure(lambda i: os.path.exists(f"pi_{i}.npy"))
+@job(array=tasks, cpus=1, ram="2GB", time="5:00")
 def generate(i: int):
-    print(f'Task {i + 1} / {tasks}')
+    print(f"Task {i + 1} / {tasks}")
 
     x = np.random.random(samples)
     y = np.random.random(samples)
     within_circle = x**2 + y**2 <= 1
 
-    np.save(f'pi_{i}.npy', within_circle)
+    np.save(f"pi_{i}.npy", within_circle)
 
 @after(generate)
-@job(cpus=2, ram='4GB', time='15:00')
+@job(cpus=2, ram="4GB", time="15:00")
 def estimate():
-    files = glob.glob('pi_*.npy')
+    files = glob.glob("pi_*.npy")
     stack = np.vstack([np.load(f) for f in files])
     pi_estimate = stack.mean() * 4
 
-    print(f'π ≈ {pi_estimate}')
+    print(f"π ≈ {pi_estimate}")
 
-schedule(estimate, name='pi.py', backend='async')
+schedule(estimate, name="pi.py", backend="async")
 ```
 
 Running this script with the `'async'` backend displays
@@ -112,31 +112,31 @@ The package provides four decorators:
 * `@dawgz.job` registers a function as a job, with its settings (name, array, resources, ...). It should always be the first (lowest) decorator. In the following example, `a` is a job with the name `'A'` and a time limit of one hour.
 
     ```python
-    @job(name='A', time='01:00:00')
+    @job(name="A", time="01:00:00")
     def a():
     ```
 
-    All keyword arguments other than `name` and `array` are passed as settings to the scheduler. For example, with the `slurm` backend, the following would lead to a job array of 64 tasks, with a maximum of 3 simultaneous tasks running exclusively on `'tesla'` or `'quadro'` partitions.
+    All keyword arguments other than `name` and `array` are passed as settings to the scheduler. For example, with the `slurm` backend, the following would lead to a job array of 64 tasks, with a maximum of 3 simultaneous tasks running exclusively on `tesla` or `quadro` partitions.
 
     ```python
-    @job(array=64, maxsim=3, partition='tesla,quadro')
+    @job(array=64, maxsim=3, partition="tesla,quadro")
     ```
 
     Importantly, a job is **shipped with its context**, meaning that modifying global variables after it has been created does not affect its execution.
 
-* `@dawgz.after` adds one or more dependencies to a job. By default, the job waits for its dependencies to complete with success. The desired status can be set to `'success'` (default), `'failure'` or `'any'`. In the following example, `b` waits for `a` to complete with `'failure'`.
+* `@dawgz.after` adds one or more dependencies to a job. By default, the job waits for its dependencies to complete with success. The desired status can be set to `"success"` (default), `"failure"` or `"any"`. In the following example, `b` waits for `a` to complete with `"failure"`.
 
     ```python
-    @after(a, status='failure')
+    @after(a, status="failure")
     @job
     def b():
     ```
 
-* `@dawgz.waitfor` declares whether the job has to wait for `'all'` (default) or `'any'` of its dependencies to be satisfied before starting. In the following example, `c` waits for either `a` or `b` to complete (with success).
+* `@dawgz.waitfor` declares whether the job has to wait for `"all"` (default) or `"any"` of its dependencies to be satisfied before starting. In the following example, `c` waits for either `a` or `b` to complete (with success).
 
     ```python
     @after(a, b)
-    @waitfor('any')
+    @waitfor("any")
     @job
     def c():
     ```
@@ -144,7 +144,7 @@ The package provides four decorators:
 * `@dawgz.ensure` adds a [postcondition](https://wikipedia.org/wiki/Postconditions) to a job, i.e. a condition that must be `True` after the execution of the job. Not satisfying all postconditions after execution results in an `AssertionError` at runtime. In the following example, `d` ensures that the file `log.txt` exists.
 
     ```python
-    @ensure(lambda: os.path.exists('log.txt'))
+    @ensure(lambda: os.path.exists("log.txt"))
     @job
     def d():
     ```

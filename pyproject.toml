@@ -30,6 +30,25 @@ documentation = "https://github.com/francois-rozet/dawgz"
 source = "https://github.com/francois-rozet/dawgz"
 tracker = "https://github.com/francois-rozet/dawgz/issues"
 
+[tool.ruff]
+line-length = 99
+
+[tool.ruff.lint]
+extend-select = ["B", "I", "W"]
+ignore = ["B023", "E731"]
+preview = true
+
+[tool.ruff.lint.isort]
+lines-between-types = 1
+no-sections = true
+relative-imports-order = "closest-to-furthest"
+
+[tool.ruff.format]
+preview = true
+
 [tool.setuptools.dynamic]
 dependencies = {file = "requirements.txt"}
 version = {attr = "dawgz.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["dawgz*"]

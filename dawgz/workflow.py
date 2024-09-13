@@ -1,9 +1,11 @@
 r"""Workflow graph components"""
 
 from __future__ import annotations
-from functools import cached_property
-from typing import *
 
+from functools import cached_property
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Set, Union
+
+# isort: split
 from .utils import accepts, comma_separated, every, pickle
 
 
@@ -39,7 +41,7 @@ class Job(Node):
         f: Callable,
         name: str = None,
         array: Union[int, Iterable[int]] = None,
-        settings: Dict[str, Any] = {},
+        settings: Dict[str, Any] = {},  # noqa: B006
         **kwargs,
     ):
         super().__init__()
@@ -63,7 +65,7 @@ class Job(Node):
         self.settings.update(kwargs)
 
         # Dependencies
-        self._waitfor = 'all'
+        self._waitfor = "all"
         self.unsatisfied = set()
 
         # Conditions
@@ -72,7 +74,7 @@ class Job(Node):
     def __getstate__(self) -> Dict:
         state = self.__dict__.copy()
 
-        for key in ['_f', '_postconditions']:
+        for key in ["_f", "_postconditions"]:
             state.pop(key, None)
 
         return state
@@ -104,14 +106,14 @@ class Job(Node):
         if self.array is None:
             return self.name
         else:
-            return self.name + '[' + comma_separated(self.array) + ']'
+            return self.name + "[" + comma_separated(self.array) + "]"
 
     @property
     def dependencies(self) -> Dict[Job, str]:
         return self.parents
 
-    def after(self, *deps: Job, status: str = 'success'):
-        assert status in ['success', 'failure', 'any']
+    def after(self, *deps: Job, status: str = "success"):
+        assert status in ["success", "failure", "any"]
 
         for dep in deps:
             self.add_parent(dep, status)
@@ -125,8 +127,8 @@ class Job(Node):
         return self._waitfor
 
     @waitfor.setter
-    def waitfor(self, mode: str = 'all'):
-        assert mode in ['all', 'any']
+    def waitfor(self, mode: str = "all"):
+        assert mode in ["all", "any"]
 
         self._waitfor = mode
 
@@ -157,9 +159,9 @@ class Job(Node):
     @property
     def satisfiable(self) -> bool:
         if self.unsatisfied:
-            if self.waitfor == 'all':
+            if self.waitfor == "all":
                 return False
-            elif self.waitfor == 'any' and not self.dependencies:
+            elif self.waitfor == "any" and not self.dependencies:
                 return False
 
         return True
@@ -231,7 +233,7 @@ def prune(*jobs: Job) -> Set[Job]:
 
         for dep, status in job.dependencies.items():
             if dep.done:
-                if status == 'failure':  # first-order unsatisfiability
+                if status == "failure":  # first-order unsatisfiability
                     unsatisfied.append(dep)
                 else:
                     satisfied.append(dep)
@@ -240,7 +242,7 @@ def prune(*jobs: Job) -> Set[Job]:
 
         job.detach(*satisfied, *unsatisfied)
 
-        if job.waitfor == 'any' and satisfied:
+        if job.waitfor == "any" and satisfied:
             job.detach(*pending)
             job.unsatisfied.clear()
         else:

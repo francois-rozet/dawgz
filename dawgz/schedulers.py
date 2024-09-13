@@ -19,13 +19,14 @@ from inspect import isawaitable
 from pathlib import Path
 from random import random
 from tabulate import tabulate
-from typing import *
+from typing import Any, Callable, Dict, List
 
-from .utils import comma_separated, eprint, future, pickle, runpickle, trace, slugify, wrap
-from .workflow import Job, cycles, prune as _prune
+# isort: split
+from .utils import comma_separated, eprint, future, pickle, runpickle, slugify, trace, wrap
+from .workflow import Job, cycles
+from .workflow import prune as _prune
 
-
-DIR = os.environ.get('DAWGZ_DIR', '.dawgz')
+DIR = os.environ.get("DAWGZ_DIR", ".dawgz")
 DIR = Path(DIR).resolve()
 
 
@@ -37,7 +38,7 @@ class Scheduler(ABC):
     def __init__(
         self,
         name: str = None,
-        settings: Dict[str, Any] = {},
+        settings: Dict[str, Any] = {},  # noqa: B006
         **kwargs,
     ):
         super().__init__()
@@ -59,10 +60,10 @@ class Scheduler(ABC):
         self.traces = {}
 
     def dump(self):
-        with open(self.path / 'dump.pkl', 'wb') as f:
+        with open(self.path / "dump.pkl", "wb") as f:
             pickle.dump(self, f)
 
-        with open(self.path.parent / 'workflows.csv', 'a', newline='') as f:
+        with open(self.path.parent / "workflows.csv", "a", newline="") as f:
             csv.writer(f).writerow((
                 self.name,
                 self.uuid,
@@ -74,7 +75,7 @@ class Scheduler(ABC):
 
     @staticmethod
     def load(path: Path) -> Scheduler:
-        with open(path / 'dump.pkl', 'rb') as f:
+        with open(path / "dump.pkl", "rb") as f:
             return pickle.load(f)
 
     def tag(self, job: Job) -> str:
@@ -83,13 +84,13 @@ class Scheduler(ABC):
         else:
             i = self.order[job] = len(self.order)
 
-        return f'{i:04d}_{slugify(job.name)}'
+        return f"{i:04d}_{slugify(job.name)}"
 
     def state(self, job: Job, i: int = None) -> str:
         if job in self.traces:
-            return 'FAILED'
+            return "FAILED"
         else:
-            return 'COMPLETED'
+            return "COMPLETED"
 
     def output(self, job: Job, i: int = None) -> Any:
         if job.array is None:
@@ -99,15 +100,12 @@ class Scheduler(ABC):
 
     def report(self, job: Job = None) -> str:
         if job is None:
-            headers = ('Name', 'State')
-            rows = [
-                (str(job), self.state(job))
-                for job in self.order
-            ]
+            headers = ("Name", "State")
+            rows = [(str(job), self.state(job)) for job in self.order]
 
             return tabulate(rows, headers, showindex=True)
         else:
-            headers = ('Name', 'State', 'Output')
+            headers = ("Name", "State", "Output")
             array = [None]
 
             if job in self.traces:
@@ -117,8 +115,7 @@ class Scheduler(ABC):
             else:
                 array = sorted(job.array)
                 rows = [
-                    (f'{job.name}[{i}]', self.state(job, i), self.output(job, i))
-                    for i in array
+                    (f"{job.name}[{i}]", self.state(job, i), self.output(job, i)) for i in array
                 ]
 
             rows = [
@@ -193,7 +190,7 @@ def schedule(
     **kwargs,
 ) -> Scheduler:
     for cycle in cycles(*jobs, backward=True):
-        raise CyclicDependencyGraphError(' <- '.join(map(str, cycle)))
+        raise CyclicDependencyGraphError(" <- ".join(map(str, cycle)))
 
     if prune:
         jobs = _prune(*jobs)
@@ -212,7 +209,7 @@ def schedule(
     scheduler.dump()
 
     if scheduler.traces and not quiet:
-        eprint(tabulate(scheduler.traces.items(), ('Job', 'Error'), showindex=True))
+        eprint(tabulate(scheduler.traces.items(), ("Job", "Error"), showindex=True))
 
     return scheduler
 
@@ -220,7 +217,7 @@ def schedule(
 class AsyncScheduler(Scheduler):
     r"""Asynchronous scheduler"""
 
-    backend = 'async'
+    backend = "async"
 
     def __init__(self, pools: int = None, **kwargs):
         super().__init__(**kwargs)
@@ -251,21 +248,21 @@ class AsyncScheduler(Scheduler):
             for task in done:
                 result, status = task.result()
 
-                if isinstance(result, JobFailedError) and status != 'success':
+                if isinstance(result, JobFailedError) and status != "success":
                     result = None
-                elif not isinstance(result, Exception) and status == 'failure':
-                    result = JobNotFailedError(f'{job}')
+                elif not isinstance(result, Exception) and status == "failure":
+                    result = JobNotFailedError(f"{job}")
 
                 if isinstance(result, Exception):
-                    if job.waitfor == 'all':
+                    if job.waitfor == "all":
                         raise DependencyNeverSatisfiedError(str(job)) from result
-                elif job.waitfor == 'any':
+                elif job.waitfor == "any":
                     break
             else:
                 continue
             break
         else:
-            if job.dependencies and job.waitfor == 'any':
+            if job.dependencies and job.waitfor == "any":
                 raise DependencyNeverSatisfiedError(str(job))
 
     async def exec(self, job: Job) -> Any:
@@ -293,7 +290,7 @@ class AsyncScheduler(Scheduler):
 class DummyScheduler(AsyncScheduler):
     r"""Dummy scheduler"""
 
-    backend = 'dummy'
+    backend = "dummy"
 
     async def exec(self, job: Job):
         print(f"START {job}")
@@ -306,43 +303,43 @@ class DummyScheduler(AsyncScheduler):
 class SlurmScheduler(Scheduler):
     r"""Slurm scheduler"""
 
-    backend = 'slurm'
+    backend = "slurm"
     translate = {
-        'cpus': 'cpus-per-task',
-        'gpus': 'gpus-per-node',
-        'ram': 'mem',
-        'memory': 'mem',
-        'timelimit': 'time',
+        "cpus": "cpus-per-task",
+        "gpus": "gpus-per-task",
+        "ram": "mem",
+        "memory": "mem",
+        "timelimit": "time",
     }
 
     def __init__(
         self,
-        shell: str = os.environ.get('SHELL', '/bin/sh'),
-        env: List[str] = [],  # cd, virtualenv, conda, etc.
+        shell: str = os.environ.get("SHELL", "/bin/sh"),
+        env: List[str] = [],  # noqa: B006
         **kwargs,
     ):
         super().__init__(**kwargs)
 
-        assert shutil.which('sbatch') is not None, "sbatch executable not found"
+        assert shutil.which("sbatch") is not None, "sbatch executable not found"
 
         # Environment
         self.shell = shell
         self.env = env
 
-    @lru_cache(None)
+    @lru_cache(None)  # noqa: B019
     def sacct(self, jobid: str) -> Dict[str, str]:
         text = subprocess.run(
-            ['sacct', '-j', jobid, '-o', 'JobID,State', '-n', '-P', '-X'],
+            ["sacct", "-j", jobid, "-o", "JobID,State", "-n", "-P", "-X"],
             capture_output=True,
             check=True,
             text=True,
         ).stdout
 
-        return dict(line.split('|') for line in text.splitlines())
+        return dict(line.split("|") for line in text.splitlines())
 
     def state(self, job: Job, i: int = None) -> str:
         if job in self.traces:
-            return 'CANCELLED'
+            return "CANCELLED"
 
         jobid = self.results[job]
         table = self.sacct(jobid)
@@ -350,7 +347,7 @@ class SlurmScheduler(Scheduler):
         if job.array is None:
             return table.get(jobid, None)
         elif i in job.array:
-            jobid = f'{jobid}_{i}'
+            jobid = f"{jobid}_{i}"
 
             if jobid in table:
                 return table[jobid]
@@ -359,9 +356,9 @@ class SlurmScheduler(Scheduler):
 
         if len(states) > 1:
             if i in job.array:
-                return 'PENDING'
+                return "PENDING"
             else:
-                return 'MIXED'
+                return "MIXED"
         else:
             return states.pop()
 
@@ -369,16 +366,16 @@ class SlurmScheduler(Scheduler):
         tag = self.tag(job)
 
         if job.array is None:
-            logfile = self.path / f'{tag}.log'
+            logfile = self.path / f"{tag}.log"
         else:
-            logfile = self.path / f'{tag}_{i}.log'
+            logfile = self.path / f"{tag}_{i}.log"
 
         if logfile.exists():
-            with open(logfile, newline='') as f:
+            with open(logfile, newline="") as f:
                 text = f.read()
 
-            text = re.sub(r'\r+', r'\r', text)
-            text = re.sub(r'.*\r(.+)', r'\1', text)
+            text = re.sub(r"\r+", r"\r", text)
+            text = re.sub(r".*\r(.+)", r"\1", text)
 
             return text
         else:
@@ -386,7 +383,7 @@ class SlurmScheduler(Scheduler):
 
     def report(self, job: Job = None) -> str:
         if job is None:
-            headers = ('Name', 'ID', 'State')
+            headers = ("Name", "ID", "State")
             rows = []
 
             for job in self.order:
@@ -409,11 +406,11 @@ class SlurmScheduler(Scheduler):
             jobids = [jobid]
 
         return subprocess.run(
-            ['scancel', '-v', *jobids],
+            ["scancel", "-v", *jobids],
             capture_output=True,
             check=True,
             text=True,
-        ).stderr.strip('\n')
+        ).stderr.strip("\n")
 
     async def satisfy(self, job: Job) -> str:
         results = await asyncio.gather(*map(self.submit, job.dependencies))
@@ -426,22 +423,22 @@ class SlurmScheduler(Scheduler):
         # Submission script
         lines = [
             f"#!{self.shell}",
-            f"#",
-            f"#SBATCH --job-name=\"{job.name}\"",
+            "#",
+            f'#SBATCH --job-name="{job.name}"',
         ]
 
         if job.array is not None:
             line = "#SBATCH --array=" + comma_separated(job.array)
-            if 'maxsim' in job.settings:
+            if "maxsim" in job.settings:
                 line += f"%{job.settings.pop('maxsim')}"
             lines.append(line)
 
         tag = self.tag(job)
 
         if job.array is None:
-            logfile = self.path / f'{tag}.log'
+            logfile = self.path / f"{tag}.log"
         else:
-            logfile = self.path / f'{tag}_%a.log'
+            logfile = self.path / f"{tag}_%a.log"
 
         lines.append(f"#SBATCH --output={logfile}")
 
@@ -449,7 +446,7 @@ class SlurmScheduler(Scheduler):
         settings = self.settings.copy()
         settings.update(job.settings)
 
-        assert 'clusters' not in settings, "multi-cluster operations not supported"
+        assert "clusters" not in settings, "multi-cluster operations not supported"
 
         if settings:
             lines.append("#")
@@ -464,16 +461,15 @@ class SlurmScheduler(Scheduler):
                 lines.append(f"#SBATCH --{key}={value}")
 
         ## Dependencies
-        sep = '?' if job.waitfor == 'any' else ','
+        sep = "?" if job.waitfor == "any" else ","
         types = {
-            'success': 'afterok',
-            'failure': 'afternotok',
-            'any': 'afterany',
+            "success": "afterok",
+            "failure": "afternotok",
+            "any": "afterany",
         }
 
         deps = [
-            f'{types[status]}:{await self.submit(dep)}'
-            for dep, status in job.dependencies.items()
+            f"{types[status]}:{await self.submit(dep)}" for dep, status in job.dependencies.items()
         ]
 
         if deps:
@@ -489,43 +485,43 @@ class SlurmScheduler(Scheduler):
             lines.extend([*self.env, ""])
 
         ## Pickle job
-        pklfile = self.path / f'{tag}.pkl'
+        pklfile = self.path / f"{tag}.pkl"
 
-        with open(pklfile, 'wb') as f:
+        with open(pklfile, "wb") as f:
             pickle.dump(job.run, f)
 
-        args = '' if job.array is None else '$SLURM_ARRAY_TASK_ID'
+        args = "" if job.array is None else "$SLURM_ARRAY_TASK_ID"
 
         lines.extend([
-            f"python << EOC",
-            f"import pickle",
+            "python << EOC",
+            "import pickle",
             f"with open(r'{pklfile}', 'rb') as f:",
             f"    pickle.load(f)({args})",
-            f"EOC",
-            f"",
+            "EOC",
+            "",
         ])
 
         ## Save
-        shfile = self.path / f'{tag}.sh'
+        shfile = self.path / f"{tag}.sh"
 
-        with open(shfile, 'w') as f:
-            f.write('\n'.join(lines))
+        with open(shfile, "w") as f:
+            f.write("\n".join(lines))
 
         # Submit script
         try:
             text = subprocess.run(
-                ['sbatch', '--parsable', str(shfile)],
+                ["sbatch", "--parsable", str(shfile)],
                 capture_output=True,
                 check=True,
                 text=True,
             ).stdout
 
-            jobid, *_ = text.strip('\n').split(';')  # ignore cluster name
+            jobid, *_ = text.strip("\n").split(";")  # ignore cluster name
 
             return jobid
         except Exception as e:
             if isinstance(e, subprocess.CalledProcessError):
-                e = subprocess.SubprocessError(e.stderr.strip('\n'))
+                e = subprocess.SubprocessError(e.stderr.strip("\n"))
 
             raise JobSubmissionError(str(job)) from e
 

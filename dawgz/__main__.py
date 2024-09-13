@@ -4,14 +4,15 @@ import argparse
 import csv
 
 from tabulate import tabulate
-from typing import *
+from typing import List
 
+# isort: split
 from .schedulers import DIR, Scheduler
 
 
 def table(workflows: List[List[str]], workflow: int = None, job: int = None):
     if workflow is None:
-        headers = ('Name', 'ID', 'Date', 'Backend', 'Jobs', 'Errors')
+        headers = ("Name", "ID", "Date", "Backend", "Jobs", "Errors")
         rows = [(w[0], w[1][:8], *w[2:]) for w in workflows]
 
         table = tabulate(rows, headers, showindex=True)
@@ -52,15 +53,15 @@ def main():
     # Parser
     parser = argparse.ArgumentParser(description="DAWGZ's CLI")
 
-    parser.add_argument('workflow', default=None, nargs='?', type=int, help="workflow index")
-    parser.add_argument('job', default=None, nargs='?', type=int, help="job index")
+    parser.add_argument("workflow", default=None, nargs="?", type=int, help="workflow index")
+    parser.add_argument("job", default=None, nargs="?", type=int, help="job index")
 
-    parser.add_argument('-c', '--cancel', default=False, action='store_true')
+    parser.add_argument("-c", "--cancel", default=False, action="store_true")
 
     args = parser.parse_args()
 
     # Workflows
-    record = DIR / 'workflows.csv'
+    record = DIR / "workflows.csv"
 
     if record.exists():
         with open(record) as f:
@@ -75,5 +76,5 @@ def main():
         table(workflows, args.workflow, args.job)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

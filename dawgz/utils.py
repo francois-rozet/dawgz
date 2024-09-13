@@ -6,7 +6,7 @@ import inspect
 import sys
 import traceback
 
-from typing import *
+from typing import Any, Callable, Iterable
 
 
 def accepts(f: Callable, /, *args, **kwargs) -> bool:
@@ -14,7 +14,7 @@ def accepts(f: Callable, /, *args, **kwargs) -> bool:
 
     try:
         inspect.signature(f).bind(*args, **kwargs)
-    except TypeError as e:
+    except TypeError:
         return False
     else:
         return True
@@ -37,9 +37,9 @@ def comma_separated(integers: Iterable[int]) -> str:
     else:
         intervals.append((i, j))
 
-    fmt = lambda i, j: f'{i}' if i == j else f'{i}-{j}'
+    fmt = lambda i, j: f"{i}" if i == j else f"{i}-{j}"
 
-    return ','.join(map(fmt, *zip(*intervals)))
+    return ",".join(map(fmt, *zip(*intervals)))
 
 
 def eprint(*args, **kwargs):
@@ -87,7 +87,7 @@ def runpickle(f: bytes, /, *args, **kwargs) -> Any:
 def slugify(text: str) -> str:
     r"""Slugifies text."""
 
-    return ''.join(char if char.isalnum() else '_' for char in text)
+    return "".join(char if char.isalnum() else "_" for char in text)
 
 
 def trace(error: Exception) -> str:
@@ -99,12 +99,10 @@ def trace(error: Exception) -> str:
         error.__traceback__,
     )
 
-    return ''.join(lines).strip('\n')
+    return "".join(lines).strip("\n")
 
 
 def wrap(text: str, width: int) -> str:
-    return '\n'.join(
-        line[i:i + width]
-        for line in text.split('\n')
-        for i in range(0, len(line), width)
+    return "\n".join(
+        line[i : i + width] for line in text.split("\n") for i in range(0, len(line), width)
     )
