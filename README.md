@@ -116,10 +116,10 @@ The package provides four decorators:
     def a():
     ```
 
-    All keyword arguments other than `name` and `array` are passed as settings to the scheduler. For example, with the `slurm` backend, the following would lead to a job array of 64 tasks, with a maximum of 3 simultaneous tasks running exclusively on `tesla` or `quadro` partitions.
+    All keyword arguments other than `name`, `array` and `array_throttle` are passed as settings to the scheduler. For example, with the `slurm` backend, the following would lead to a job array of 64 tasks, with a maximum of 3 simultaneous tasks running exclusively on `tesla` or `quadro` partitions.
 
     ```python
-    @job(array=64, maxsim=3, partition="tesla,quadro")
+    @job(array=64, array_throttle=3, partition="tesla,quadro")
     ```
 
     Importantly, a job is **shipped with its context**, meaning that modifying global variables after it has been created does not affect its execution.

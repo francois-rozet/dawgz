@@ -22,6 +22,7 @@ def job(
     /,
     name: Optional[str] = None,
     array: Optional[Set[int]] = None,
+    array_throttle: Optional[int] = None,
     settings: Dict[str, Any] = {},  # noqa: B006
     **kwargs,
 ) -> Union[Callable, Job]:
@@ -33,6 +34,8 @@ def job(
         array: A set of indices. A job array is a group of jobs that can be launched
             concurrently. They are described by the same function, but differ by their
             index.
+        array_throttle: The maximum number of simultaneously running jobs in an array.
+            Only affects the Slurm backend.
         settings: The settings of the job, interpreted by the scheduler. Settings include
             the allocated resources (e.g. `cpus=4`, `ram="16GB"`), the estimated runtime
             (e.g. `time="03:14:15"`), the partition (e.g. `partition="gpu"`) and much
@@ -40,10 +43,17 @@ def job(
         kwargs: Additional keyword arguments added to `settings`.
     """
 
+    kwargs.update(
+        name=name,
+        array=array,
+        array_throttle=array_throttle,
+        settings=settings,
+    )
+
     if f is None:
-        return partial(job, name=name, array=array, settings=settings, **kwargs)
+        return partial(job, **kwargs)
     else:
-        return Job(f, name=name, array=array, settings=settings, **kwargs)
+        return Job(f, **kwargs)
 
 
 def after(*deps: Job, status: str = "success") -> Callable:

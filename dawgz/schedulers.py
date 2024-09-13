@@ -442,10 +442,12 @@ class SlurmScheduler(Scheduler):
         ]
 
         if job.array is not None:
-            line = "#SBATCH --array=" + comma_separated(job.array)
-            if "maxsim" in job.settings:
-                line += f"%{job.settings.pop('maxsim')}"
-            lines.append(line)
+            indices = comma_separated(job.array)
+
+            if job.array_throttle is None:
+                lines.append(f"#SBATCH --array={indices}")
+            else:
+                lines.append(f"#SBATCH --array={indices}%{job.array_throttle}")
 
         tag = self.tag(job)
 
@@ -460,10 +462,13 @@ class SlurmScheduler(Scheduler):
         settings = self.settings.copy()
         settings.update(job.settings)
 
-        assert "clusters" not in settings, "multi-cluster operations not supported"
+        assert "clusters" not in settings, "multi-cluster jobs not supported"
 
-        if settings:
-            lines.append("#")
+        for key in settings:
+            assert not key.startswith("ntasks"), "multi-task jobs not supported"
+
+        lines.append("#")
+        lines.append("#SBATCH --ntasks=1")
 
         for key, value in settings.items():
             key = self.translate.get(key, key)
@@ -487,10 +492,8 @@ class SlurmScheduler(Scheduler):
         ]
 
         if deps:
-            lines.extend([
-                "#",
-                "#SBATCH --dependency=" + sep.join(deps),
-            ])
+            lines.append("#")
+            lines.append("#SBATCH --dependency=" + sep.join(deps))
 
         lines.append("")
 
