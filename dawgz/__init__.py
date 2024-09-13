@@ -1,6 +1,6 @@
 r"""Directed Acyclic Workflow Graph Scheduling"""
 
-__version__ = "0.5.2"
+__version__ = "1.0.0"
 
 from functools import partial
 from tabulate import tabulate
