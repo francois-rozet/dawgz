@@ -39,6 +39,7 @@ class Job(Node):
     def __init__(
         self,
         f: Callable,
+        *,
         name: str = None,
         array: Union[int, Iterable[int]] = None,
         array_throttle: int = None,
@@ -46,6 +47,8 @@ class Job(Node):
         **kwargs,
     ):
         super().__init__()
+
+        assert callable(f), "job should be callable"
 
         if array is None:
             assert accepts(f), "job should not expect arguments"

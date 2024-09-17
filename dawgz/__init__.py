@@ -4,7 +4,7 @@ __version__ = "0.5.2"
 
 from functools import partial
 from tabulate import tabulate
-from typing import Any, Callable, Dict, Optional, Set, Union
+from typing import Any, Callable, Dict, Iterable, Optional, Union
 
 # isort: split
 from .schedulers import (
@@ -19,9 +19,9 @@ from .workflow import Job
 
 def job(
     f: Callable = None,
-    /,
+    *,
     name: Optional[str] = None,
-    array: Optional[Set[int]] = None,
+    array: Optional[Union[int, Iterable[int]]] = None,
     array_throttle: Optional[int] = None,
     settings: Dict[str, Any] = {},  # noqa: B006
     **kwargs,
@@ -31,9 +31,9 @@ def job(
     Arguments:
         f: A function.
         name: The job name.
-        array: A set of indices. A job array is a group of jobs that can be launched
-            concurrently. They are described by the same function, but differ by their
-            index.
+        array: An array size or set of indices. A job array is a group of jobs that can
+            be launched concurrently. They are described by the same function, but
+            differ by their index.
         array_throttle: The maximum number of simultaneously running jobs in an array.
             Only affects the Slurm backend.
         settings: The settings of the job, interpreted by the scheduler. Settings include
