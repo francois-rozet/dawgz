@@ -321,6 +321,7 @@ class SlurmScheduler(Scheduler):
         self,
         name: str = None,
         shell: str = os.environ.get("SHELL", "/bin/sh"),
+        interpreter: str = "python",
         env: Sequence[str] = [],  # noqa: B006
         **kwargs,
     ):
@@ -328,6 +329,7 @@ class SlurmScheduler(Scheduler):
         Arguments:
             name: The name of the workflow.
             shell: The scripting shell.
+            interpreter: The Python interpreter.
             env: A sequence of commands to execute before each job is launched.
             kwargs: Keyword arguments passed to :class:`Scheduler`.
         """
@@ -338,6 +340,7 @@ class SlurmScheduler(Scheduler):
 
         # Environment
         self.shell = shell
+        self.interpreter = interpreter
         self.env = env
 
     @lru_cache(None)  # noqa: B019
@@ -507,16 +510,34 @@ class SlurmScheduler(Scheduler):
         with open(pklfile, "wb") as f:
             pickle.dump(job.run, f)
 
-        args = "" if job.array is None else "$SLURM_ARRAY_TASK_ID"
+        pyfile = self.path / f"{tag}.py"
 
-        lines.extend([
-            "srun python << EOC",
-            "import pickle",
-            f"with open(r'{pklfile}', 'rb') as f:",
-            f"    pickle.load(f)({args})",
-            "EOC",
-            "",
-        ])
+        with open(pyfile, "w") as f:
+            f.write(
+                "\n".join([
+                    "import argparse",
+                    "import pickle",
+                    "",
+                    "parser = argparse.ArgumentParser()",
+                    "parser.add_argument('-i', '--index', type=int, default=None)",
+                    "",
+                    "args = parser.parse_args()",
+                    "",
+                    "with open('{}', 'rb') as f:".format(pklfile),
+                    "    if args.index is None:",
+                    "        pickle.load(f)()",
+                    "    else:",
+                    "        pickle.load(f)(args.index)",
+                    "",
+                ])
+            )
+
+        if job.array is None:
+            lines.append(f"srun {self.interpreter} {pyfile}")
+        else:
+            lines.append(f"srun {self.interpreter} {pyfile} -i $SLURM_ARRAY_TASK_ID")
+
+        lines.append("")
 
         ## Save
         shfile = self.path / f"{tag}.sh"
