@@ -346,7 +346,7 @@ class SlurmScheduler(Scheduler):
     @lru_cache(None)  # noqa: B019
     def sacct(self, jobid: str) -> Dict[str, str]:
         text = subprocess.run(
-            ["sacct", "-j", jobid, "-o", "JobID,State", "-n", "-P", "-X"],
+            ["sacct", "-j", jobid, "-o", "JobID,State", "--array", "-n", "-P", "-X"],
             capture_output=True,
             check=True,
             text=True,
@@ -363,21 +363,15 @@ class SlurmScheduler(Scheduler):
 
         if job.array is None:
             return table.get(jobid, None)
-        elif i in job.array:
-            jobid = f"{jobid}_{i}"
-
-            if jobid in table:
-                return table[jobid]
-
-        states = set(table.values())
-
-        if len(states) > 1:
-            if i in job.array:
-                return "PENDING"
+        elif i is None:
+            if table:
+                return ",".join(sorted(set(table.values())))
             else:
-                return "MIXED"
+                return None
+        elif i in job.array:
+            return table.get(f"{jobid}_{i}", None)
         else:
-            return states.pop()
+            return None
 
     def output(self, job: Job, i: int = None) -> str:
         tag = self.tag(job)

@@ -90,8 +90,8 @@ $ dawgz
  1  pi.py   9cc409fd  2022-02-28 16:38:33  slurm           2         0
 $ dawgz 1
     Name                ID  State
---  -------------  -------  -------
- 0  generate[0-4]  1868831  MIXED
+--  -------------  -------  -------------------------
+ 0  generate[0-4]  1868831  COMPLETED,PENDING,RUNNING
  1  estimate       1868832  PENDING
 $ dawgz 1 0
     Name         State      Output
