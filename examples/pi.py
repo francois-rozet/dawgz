@@ -2,15 +2,15 @@
 
 import glob
 import numpy as np
+import os
 
 from dawgz import after, ensure, job, schedule
-from os.path import exists
 
 samples = 10000
 tasks = 5
 
 
-@ensure(lambda i: exists(f"pi_{i}.npy"))
+@ensure(lambda i: os.path.exists(f"pi_{i}.npy"))
 @job(array=tasks, cpus=1, ram="2GB", time="5:00")
 def generate(i: int):
     print(f"Task {i + 1} / {tasks}")

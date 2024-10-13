@@ -5,7 +5,6 @@ from __future__ import annotations
 from functools import cached_property
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Set, Union
 
-# isort: split
 from .utils import accepts, comma_separated, every, pickle
 
 

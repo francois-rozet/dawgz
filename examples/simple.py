@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 
+import os
 import time
 
 from dawgz import after, ensure, job, schedule, waitfor
-from os.path import exists
 
 
 @job
@@ -31,7 +31,7 @@ def c():
 
 
 @after(b)
-@ensure(lambda i: i != 42 or exists(f"{i}.log"))
+@ensure(lambda i: i != 42 or os.path.exists(f"{i}.log"))
 @job(array=100)
 def d(i: int):
     print(f"d{i}")

@@ -6,7 +6,6 @@ from functools import partial
 from tabulate import tabulate
 from typing import Any, Callable, Dict, Iterable, Optional, Union
 
-# isort: split
 from .schedulers import (
     AsyncScheduler,
     DummyScheduler,

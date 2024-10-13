@@ -6,7 +6,6 @@ import csv
 from tabulate import tabulate
 from typing import List
 
-# isort: split
 from .schedulers import DIR, Scheduler
 
 

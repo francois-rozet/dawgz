@@ -21,7 +21,6 @@ from random import random
 from tabulate import tabulate
 from typing import Any, Callable, Dict, Sequence
 
-# isort: split
 from .utils import comma_separated, future, pickle, runpickle, slugify, trace, wrap
 from .workflow import Job, cycles
 from .workflow import prune as _prune
