@@ -345,7 +345,7 @@ class SlurmScheduler(Scheduler):
     @lru_cache(None)  # noqa: B019
     def sacct(self, jobid: str) -> Dict[str, str]:
         text = subprocess.run(
-            ["sacct", "-j", jobid, "-o", "JobID,State", "--array", "-n", "-P", "-X"],
+            ["sacct", "-j", jobid, "-o", "JobID,State", "-n", "-P", "-X"],
             capture_output=True,
             check=True,
             text=True,
