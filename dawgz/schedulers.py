@@ -457,8 +457,11 @@ class SlurmScheduler(Scheduler):
         for key in settings:
             assert not key.startswith("ntasks"), "multi-task jobs not supported"
 
+        nodes = settings.pop("nodes", 1)
+
         lines.append("#")
-        lines.append("#SBATCH --ntasks=1")
+        lines.append("#SBATCH --nodes=" + f"{nodes}")
+        lines.append("#SBATCH --ntasks-per-node=1")
 
         for key, value in settings.items():
             key = self.translate.get(key, key)
