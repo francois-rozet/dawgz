@@ -20,6 +20,29 @@ def accepts(f: Callable, /, *args, **kwargs) -> bool:
         return True
 
 
+def cat(text: str, width: int) -> str:
+    r"""Formats text as it would be displayed in a terminal."""
+
+    lines = []
+
+    for line in text.split("\n"):
+        s = ""
+
+        for carriage in reversed(line.split("\r")):
+            if len(carriage) > len(s):
+                s = s + carriage[len(s) :]
+
+        line = s
+
+        if line:
+            for i in range(0, len(line), width):
+                lines.append(line[i : i + width])
+        else:
+            lines.append(line)  # keep empty lines
+
+    return "\n".join(lines)
+
+
 def comma_separated(integers: Iterable[int]) -> str:
     r"""Formats integers as a comma separated list of intervals."""
 
@@ -100,9 +123,3 @@ def trace(error: Exception) -> str:
     )
 
     return "".join(lines).strip("\n")
-
-
-def wrap(text: str, width: int) -> str:
-    return "\n".join(
-        line[i : i + width] for line in text.split("\n") for i in range(0, len(line), width)
-    )

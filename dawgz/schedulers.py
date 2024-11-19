@@ -6,7 +6,6 @@ import asyncio
 import concurrent.futures as cf
 import csv
 import os
-import re
 import shutil
 import subprocess
 import uuid
@@ -21,7 +20,7 @@ from random import random
 from tabulate import tabulate
 from typing import Any, Callable, Dict, Sequence
 
-from .utils import comma_separated, future, pickle, runpickle, slugify, trace, wrap
+from .utils import cat, comma_separated, future, pickle, runpickle, slugify, trace
 from .workflow import Job, cycles
 from .workflow import prune as _prune
 
@@ -128,7 +127,7 @@ class Scheduler(ABC):
                 (
                     name,
                     state,
-                    None if output is None else wrap(output, width=120),
+                    None if output is None else cat(output, width=120),
                 )
                 for name, state, output in rows
             ]
@@ -382,12 +381,7 @@ class SlurmScheduler(Scheduler):
 
         if logfile.exists():
             with open(logfile, newline="") as f:
-                text = f.read()
-
-            text = re.sub(r"\r+", r"\r", text)
-            text = re.sub(r".*\r(.+)", r"\1", text)
-
-            return text
+                return f.read()
         else:
             return None
 
