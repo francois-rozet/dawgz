@@ -57,7 +57,7 @@ def estimate():
 schedule(estimate, name="pi.py", backend="async")
 ```
 
-Running this script with the `'async'` backend displays
+Running this script with the `"async"` backend displays
 
 ```
 $ python examples/pi.py
@@ -69,7 +69,7 @@ Task 5 / 5
 π ≈ 3.141865
 ```
 
-Alternatively, on a Slurm HPC cluster, changing the backend to `'slurm'` results in the following job queue.
+Alternatively, on a Slurm HPC cluster, changing the backend to `"slurm"` results in the following job queue.
 
 ```
 $ squeue -u username
@@ -109,7 +109,7 @@ $ dawgz 1 0
 
 The package provides four decorators:
 
-* `@dawgz.job` registers a function as a job, with its settings (name, array, resources, ...). It should always be the first (lowest) decorator. In the following example, `a` is a job with the name `'A'` and a time limit of one hour.
+* `@dawgz.job` registers a function as a job, with its settings (name, array, resources, ...). It should always be the first (lowest) decorator. In the following example, `a` is a job with the name `"A"` and a time limit of one hour.
 
     ```python
     @job(name="A", time="01:00:00")
@@ -123,6 +123,19 @@ The package provides four decorators:
     ```
 
     Importantly, a job is **shipped with its context**, meaning that modifying global variables after it has been created does not affect its execution.
+
+    However, a job is **not** shipped with its dependencies. This means that updating or modifying a dependency (i.e. a module) after a job as been submitted can affect its execution. If this is an issue for you, you can register your module such that it is pickled by value rather than by reference.
+
+    ```python
+    import cloudpickle
+    import my_module
+
+    cloudpickle.register_pickle_by_value(my_module)
+
+    @job
+    def a():
+        my_module.my_function()
+    ```
 
 * `@dawgz.after` adds one or more dependencies to a job. By default, the job waits for its dependencies to complete with success. The desired status can be set to `"success"` (default), `"failure"` or `"any"`. In the following example, `b` waits for `a` to complete with `"failure"`.
 
