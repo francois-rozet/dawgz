@@ -380,7 +380,7 @@ class SlurmScheduler(Scheduler):
             logfile = self.path / f"{tag}_{i}.log"
 
         if logfile.exists():
-            with open(logfile, newline="") as f:
+            with open(logfile, newline="", errors="ignore") as f:
                 return f.read()
         else:
             return None
