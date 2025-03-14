@@ -124,7 +124,7 @@ The package provides four decorators:
 
     Importantly, a job is **shipped with its context**, meaning that modifying global variables after it has been created does not affect its execution.
 
-    However, a job is **not** shipped with its dependencies. This means that updating or modifying a dependency (i.e. a module) after a job as been submitted can affect its execution. If this is an issue for you, you can register your module such that it is pickled by value rather than by reference.
+    However, a job is **not** shipped with its dependencies. This means that updating or modifying a dependency (i.e. a module) after a job has been submitted can affect its execution. If this is an issue for you, you can register your module such that it is pickled by value rather than by reference.
 
     ```python
     import cloudpickle
