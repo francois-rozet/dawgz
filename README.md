@@ -12,7 +12,7 @@ The `dawgz` package is available on [PyPi](https://pypi.org/project/dawgz/), whi
 pip install dawgz
 ```
 
-Alternatively, if you need the latest features, you can install it using.
+Alternatively, if you need the latest features, you can install it using
 
 ```
 pip install git+https://github.com/francois-rozet/dawgz
@@ -22,7 +22,7 @@ pip install git+https://github.com/francois-rozet/dawgz
 
 In `dawgz`, a job is a Python function decorated by `@dawgz.job`. This decorator allows to define the job's parameters, like its name, whether it is a job array, the resources it needs, etc. The job's dependencies are declared with the `@dawgz.after` decorator. At last, the `dawgz.schedule` function takes care of scheduling the jobs and their dependencies, with a selected backend. For more information, check out the [interface](#Interface) and the [examples](examples/).
 
-Follows a small example demonstrating how one could use `dawgz` to calculate `π` (very roughly) using the [Monte Carlo method](https://en.wikipedia.org/wiki/Monte_Carlo_method). We define two jobs: `generate` and `estimate`. The former is a *job array*, meaning that it is executed concurrently for all values of `i = 0` up to `tasks - 1`. It also defines a [postcondition](https://en.wikipedia.org/wiki/Postconditions) ensuring that the file `pi_{i}.npy` exists after the job's completion. The job `estimate` has `generate` as a dependency, meaning it should only start after `generate` succeeded.
+Follows a small example demonstrating how one could use `dawgz` to calculate `π` (very roughly) using the [Monte Carlo method](https://en.wikipedia.org/wiki/Monte_Carlo_method). We define two jobs: `generate` and `estimate`. The former is a *job array*, meaning that it is executed concurrently for all values of `i = 0` up to `tasks - 1`. It also defines a [postcondition](https://en.wikipedia.org/wiki/Postconditions) ensuring that the file `pi_{i}.npy` exists after the job's completion. The job `estimate` has `generate` as dependency, meaning it should only start after `generate` succeeded.
 
 ```python
 import glob
