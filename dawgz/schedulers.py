@@ -319,7 +319,7 @@ class SlurmScheduler(Scheduler):
         self,
         name: str = None,
         shell: str = os.environ.get("SHELL", "/bin/sh"),
-        interpreter: str = None,
+        interpreter: str = "python",
         env: Sequence[str] = [],  # noqa: B006
         **kwargs,
     ):
@@ -327,7 +327,7 @@ class SlurmScheduler(Scheduler):
         Arguments:
             name: The name of the workflow.
             shell: The scripting shell.
-            interpreter: The Python interpreter. If not None, overrides jobs' interpreters.
+            interpreter: The Python interpreter.
             env: A sequence of commands to execute before each job is launched.
             kwargs: Keyword arguments passed to :class:`Scheduler`.
         """

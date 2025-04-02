@@ -42,7 +42,7 @@ class Job(Node):
         name: str = None,
         array: Union[int, Iterable[int]] = None,
         array_throttle: int = None,
-        interpreter: str = "python",
+        interpreter: str = None,
         settings: Dict[str, Any] = {},  # noqa: B006
         **kwargs,
     ):
