@@ -522,7 +522,7 @@ class SlurmScheduler(Scheduler):
                 ])
             )
 
-        if self.interpreter is not None:
+        if job.interpreter is None:
             interpreter = self.interpreter
         else:
             interpreter = job.interpreter
