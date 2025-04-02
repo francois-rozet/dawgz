@@ -522,10 +522,15 @@ class SlurmScheduler(Scheduler):
                 ])
             )
 
-        if job.array is None:
-            lines.append(f"srun {self.interpreter} {pyfile}")
+        if job.interpreter is None:
+            interpreter = self.interpreter
         else:
-            lines.append(f"srun {self.interpreter} {pyfile} -i $SLURM_ARRAY_TASK_ID")
+            interpreter = job.interpreter
+
+        if job.array is None:
+            lines.append(f"srun {interpreter} {pyfile}")
+        else:
+            lines.append(f"srun {interpreter} {pyfile} -i $SLURM_ARRAY_TASK_ID")
 
         lines.append("")
 

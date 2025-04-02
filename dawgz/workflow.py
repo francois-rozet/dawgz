@@ -42,6 +42,7 @@ class Job(Node):
         name: str = None,
         array: Union[int, Iterable[int]] = None,
         array_throttle: int = None,
+        interpreter: str = None,
         settings: Dict[str, Any] = {},  # noqa: B006
         **kwargs,
     ):
@@ -63,6 +64,7 @@ class Job(Node):
         self.name = f.__name__ if name is None else name
         self.array = array
         self.array_throttle = array_throttle
+        self.interpreter = interpreter
 
         # Settings
         self.settings = settings.copy()
