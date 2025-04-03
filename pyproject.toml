@@ -17,10 +17,19 @@ classifiers = [
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
 ]
-dynamic = ["dependencies", "version"]
+dependencies = [
+  "cloudpickle>=2.0.0",
+  "tabulate>=0.8.0",
+]
+dynamic = ["version"]
 keywords = ["workflow", "scheduling", "slurm", "hpc"]
 readme = "README.md"
 requires-python = ">=3.8"
+
+[project.optional-dependencies]
+lint = [
+  "ruff==0.9.9",
+]
 
 [project.scripts]
 dawgz = "dawgz.__main__:main"
@@ -47,7 +56,6 @@ section-order = ["future", "third-party", "first-party", "local-folder"]
 preview = true
 
 [tool.setuptools.dynamic]
-dependencies = {file = "requirements.txt"}
 version = {attr = "dawgz.__version__"}
 
 [tool.setuptools.packages.find]
