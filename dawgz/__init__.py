@@ -1,10 +1,12 @@
 r"""Directed Acyclic Workflow Graph Scheduling"""
 
+from __future__ import annotations
+
 __version__ = "1.0.4"
 
-from functools import partial
+from functools import partial, wraps
 from tabulate import tabulate
-from typing import Any, Callable, Dict, Iterable, Optional, Union
+from typing import Any, Callable, Dict, Literal, Optional, ParamSpec, Union, overload
 
 from .schedulers import (
     AsyncScheduler,
@@ -15,26 +17,44 @@ from .schedulers import (
 from .utils import eprint
 from .workflow import Job
 
+P = ParamSpec("P")
+
+
+@overload
+def job(
+    fun: Callable[P, Any],
+    /,
+    *,
+    name: Optional[str] = ...,
+    settings: Dict[str, Any] = ...,
+    **kwargs,
+) -> Callable[P, Job]: ...
+
+
+@overload
+def job(
+    *,
+    name: Optional[str] = ...,
+    settings: Dict[str, Any] = ...,
+    **kwargs,
+) -> Callable[[Callable[P, Any]], Callable[P, Job]]: ...
+
 
 def job(
-    f: Callable = None,
+    fun: Optional[Callable[P, Any]] = None,
+    /,
     *,
     name: Optional[str] = None,
-    array: Optional[Union[int, Iterable[int]]] = None,
-    array_throttle: Optional[int] = None,
+    interpreter: Optional[str] = None,
     settings: Dict[str, Any] = {},  # noqa: B006
     **kwargs,
-) -> Union[Callable, Job]:
-    r"""Transforms a function into a job.
+) -> Union[Callable[P, Job], Callable[[Callable[P, Any]], Callable[P, Job]]]:
+    r"""Decorator to capture the arguments of a function for later execution.
 
     Arguments:
-        f: A function.
+        fun: A function.
         name: The job name.
-        array: An array size or set of indices. A job array is a group of jobs that can
-            be launched concurrently. They are described by the same function, but
-            differ by their index.
-        array_throttle: The maximum number of simultaneously running jobs in an array.
-            Only affects the Slurm backend.
+        interpreter: An optional Python interpreter command. For example, `uv run` or `torchrun`.
         settings: The settings of the job, interpreted by the scheduler. Settings include
             the allocated resources (e.g. `cpus=4`, `ram="16GB"`), the estimated runtime
             (e.g. `time="03:14:15"`), the partition (e.g. `partition="gpu"`) and much
@@ -42,76 +62,39 @@ def job(
         kwargs: Additional keyword arguments added to `settings`.
     """
 
-    kwargs.update(
-        name=name,
-        array=array,
-        array_throttle=array_throttle,
-        settings=settings,
-    )
+    settings = settings.copy()
+    settings.update(kwargs)
 
-    if f is None:
+    if fun is None:
         return partial(job, **kwargs)
-    else:
-        return Job(f, **kwargs)
 
+    @wraps(fun)
+    def factory(*args, **kwargs):
+        return Job(
+            fun,
+            args,
+            kwargs,
+            name=name,
+            interpreter=interpreter,
+            settings=settings,
+        )
 
-def after(*deps: Job, status: str = "success") -> Callable:
-    r"""Adds dependencies to a job.
-
-    Arguments:
-        deps: A set of job dependencies.
-        status: The desired dependency status. Options are `"success"`, `"failure"` or `"any"`.
-    """
-
-    def decorator(self: Job) -> Job:
-        self.after(*deps, status=status)
-        return self
-
-    return decorator
-
-
-def waitfor(mode: str) -> Callable:
-    r"""Modifies the waiting mode of a job.
-
-    Arguments:
-        mode: The dependency waiting mode. Options are `"all"` (default) or `"any"`.
-    """
-
-    def decorator(self: Job) -> Job:
-        self.waitfor = mode
-        return self
-
-    return decorator
-
-
-def ensure(condition: Callable) -> Callable:
-    r"""Adds a postcondition to a job.
-
-    Arguments:
-        condition: A predicate that should be `True` after the execution of the job.
-    """
-
-    def decorator(self: Job) -> Job:
-        self.ensure(condition)
-        return self
-
-    return decorator
+    return factory
 
 
 def schedule(
     *jobs: Job,
-    backend: str,
-    prune: bool = False,
+    backend: Literal["async", "dummy", "slurm"],
     quiet: bool = False,
     **kwargs,
 ) -> Scheduler:
     r"""Schedules a group of jobs.
 
+    Jobs that have already been executed, as determined by their completion status, will be pruned.
+
     Arguments:
         jobs: A group of jobs describing a workflow.
-        backend: The scheduling backend. Options are `"async"`, `"dummy"` or `"slurm"`.
-        prune: Whether to prune jobs that have already been executed or not,
-            as determined by their postconditions.
+        backend: The scheduling backend.
         quiet: Whether to display eventual job errors or not.
         kwargs: Keyword arguments passed to the scheduler's constructor.
 
@@ -129,7 +112,7 @@ def schedule(
     }
 
     scheduler = backends.get(backend)(**kwargs)
-    scheduler(*jobs, prune=prune)
+    scheduler(*jobs)
     scheduler.dump()
 
     if scheduler.traces and not quiet:

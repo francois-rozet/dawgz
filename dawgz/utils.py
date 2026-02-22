@@ -3,21 +3,13 @@ r"""Miscellaneous helpers"""
 import asyncio
 import cloudpickle as pickle
 import inspect
+import re
 import sys
 import traceback
+import uuid
 
-from typing import Any, Callable, Iterable
-
-
-def accepts(f: Callable, /, *args, **kwargs) -> bool:
-    r"""Checks whether a function `f` accepts arguments without errors."""
-
-    try:
-        inspect.signature(f).bind(*args, **kwargs)
-    except TypeError:
-        return False
-    else:
-        return True
+from typing import Any
+from wonderwords import RandomWord
 
 
 def cat(text: str, width: int) -> str:
@@ -43,38 +35,10 @@ def cat(text: str, width: int) -> str:
     return "\n".join(lines)
 
 
-def comma_separated(integers: Iterable[int]) -> str:
-    r"""Formats integers as a comma separated list of intervals."""
-
-    integers = sorted(list(integers))
-    intervals = []
-
-    i = j = integers[0]
-
-    for k in integers[1:]:
-        if k > j + 1:
-            intervals.append((i, j))
-            i = j = k
-        else:
-            j = k
-    else:
-        intervals.append((i, j))
-
-    fmt = lambda i, j: f"{i}" if i == j else f"{i}-{j}"
-
-    return ",".join(map(fmt, *zip(*intervals)))
-
-
 def eprint(*args, **kwargs):
     r"""Prints to the standard error stream."""
 
     print(*args, file=sys.stderr, **kwargs)
-
-
-def every(conditions: Iterable[Callable]) -> Callable:
-    r"""Combines a list of conditions into a single condition."""
-
-    return lambda *args: all(c(*args) for c in conditions)
 
 
 def future(obj: Any, return_exceptions: bool = False) -> asyncio.Future:
@@ -110,7 +74,10 @@ def runpickle(f: bytes, /, *args, **kwargs) -> Any:
 def slugify(text: str) -> str:
     r"""Slugifies text."""
 
-    return "".join(char if char.isalnum() else "_" for char in text)
+    slug = "".join(char if char.isalnum() else "_" for char in text)
+    slug = "_".join(slug.split("_"))
+
+    return slug
 
 
 def trace(error: Exception) -> str:
@@ -122,4 +89,26 @@ def trace(error: Exception) -> str:
         error.__traceback__,
     )
 
+    lines = [line for line in lines if not re.search(r"futures\/\w+\.py", line)]
+
     return "".join(lines).strip("\n")
+
+
+def unique_id() -> str:
+    adjective = RandomWord().word(
+        word_min_length=6,
+        word_max_length=8,
+        include_categories=["adjectives"],
+        exclude_with_spaces=True,
+    )
+
+    noun = RandomWord().word(
+        word_min_length=14 - len(adjective),
+        word_max_length=14 - len(adjective),
+        include_categories=["nouns"],
+        exclude_with_spaces=True,
+    )
+
+    hex = uuid.uuid4().hex[:8]
+
+    return f"{adjective}_{noun}_{hex}"

@@ -12,13 +12,11 @@ from .schedulers import DIR, Scheduler
 def table(workflows: List[List[str]], workflow: int = None, job: int = None):
     if workflow is None:
         headers = ("Name", "ID", "Date", "Backend", "Jobs", "Errors")
-        rows = [(w[0], w[1][:8], *w[2:]) for w in workflows]
-
-        table = tabulate(rows, headers, showindex=True)
+        table = tabulate(workflows, headers, showindex=True)
     else:
         row = workflows[workflow]
-        uuid = row[1]
-        scheduler = Scheduler.load(DIR / uuid)
+        uid = row[1]
+        scheduler = Scheduler.load(DIR / uid)
 
         if job is None:
             table = scheduler.report()

@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
+requires = ["setuptools>=61.0"]
 
 [project]
 name = "dawgz"
@@ -12,7 +12,6 @@ authors = [
 classifiers = [
   "Intended Audience :: Developers",
   "Intended Audience :: Science/Research",
-  "License :: OSI Approved :: MIT License",
   "Natural Language :: English",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
@@ -20,14 +19,16 @@ classifiers = [
 dependencies = [
   "cloudpickle>=2.0.0",
   "tabulate>=0.8.0",
+  "wonderwords>=3.0.0",
 ]
 dynamic = ["version"]
 keywords = ["workflow", "scheduling", "slurm", "hpc"]
+license = "MIT"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 
 [project.optional-dependencies]
-lint = [
+dev = [
   "ruff==0.9.9",
 ]
 
@@ -44,7 +45,7 @@ line-length = 99
 
 [tool.ruff.lint]
 extend-select = ["B", "I", "W"]
-ignore = ["B023", "E731"]
+ignore = ["B023"]
 preview = true
 
 [tool.ruff.lint.isort]

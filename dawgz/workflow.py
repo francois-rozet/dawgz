@@ -2,18 +2,27 @@ r"""Workflow graph components"""
 
 from __future__ import annotations
 
-from functools import cached_property
-from typing import Any, Callable, Dict, Iterable, Iterator, List, Set, Union
+from functools import partial
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Literal,
+    Optional,
+    Sequence,
+    Set,
+    TypeVar,
+)
 
-from .utils import accepts, comma_separated, every, pickle
+from .utils import pickle
 
 
 class Node(object):
     r"""Abstract graph node"""
 
     def __init__(self):
-        super().__init__()
-
         self.children = {}
         self.parents = {}
 
@@ -33,147 +42,117 @@ class Node(object):
 
 
 class Job(Node):
-    r"""Job node"""
+    r"""Job node."""
 
     def __init__(
         self,
-        f: Callable,
+        fun: Callable,
+        /,
+        args: Sequence[Any] = (),
+        kwargs: Dict[str, Any] = {},  # noqa: B006
         *,
-        name: str = None,
-        array: Union[int, Iterable[int]] = None,
-        array_throttle: int = None,
-        interpreter: str = None,
+        name: Optional[str] = None,
+        interpreter: Optional[str] = None,
         settings: Dict[str, Any] = {},  # noqa: B006
-        **kwargs,
     ):
         super().__init__()
 
-        assert callable(f), "job should be callable"
+        self.dump = pickle.dumps((fun, args, kwargs))
 
-        if array is None:
-            assert accepts(f), "job should not expect arguments"
+        # String repr
+        if name is None:
+            name = fun.__name__
         else:
-            if type(array) is int:
-                array = range(array)
-            array = set(array)
+            assert name.replace("_", "").isalnum(), (
+                f"function name can only contain underscore and alphanumeric characters, got '{name}'"
+            )
 
-            assert len(array) > 0, "array should not be empty"
-            assert accepts(f, 0), "job array should expect an argument"
-
-        self._f = pickle.dumps(f)
-        self.name = f.__name__ if name is None else name
-        self.array = array
-        self.array_throttle = array_throttle
-        self.interpreter = interpreter
+        self.fun_name = name
+        self.args_repr = [f"{a}" for a in args] + [f"{k}={v}" for k, v in kwargs.items()]
 
         # Settings
-        self.settings = settings.copy()
-        self.settings.update(kwargs)
+        self.interpreter = interpreter
+        self.settings = settings
+
+        # Status
+        self.status: str = "pending"
 
         # Dependencies
-        self._waitfor = "all"
-        self.unsatisfied = set()
+        self.wait_mode: str = "all"
+        self.satisfied: Dict[Job, str] = {}
+        self.unsatisfied: Dict[Job, str] = {}
 
-        # Conditions
-        self._postconditions = []
+    def __repr__(self) -> str:
+        return f"{self.fun_name}(" + ", ".join(self.args_repr) + ")"
 
     def __getstate__(self) -> Dict:
         state = self.__dict__.copy()
-
-        for key in ["_f", "_postconditions"]:
-            state.pop(key, None)
-
+        state.pop("dump")
         return state
 
     @property
-    def f(self) -> Callable:
-        return pickle.loads(self._f)
+    def run(self) -> Callable[[], Any]:
+        fun, args, kwargs = pickle.loads(self.dump)
+        return partial(fun, *args, **kwargs)
 
-    @property
-    def run(self) -> Callable:
-        name = self.name
-        f = self.f
-        cond = every(self.postconditions)
+    def mark(self, status: Literal["success", "failure", "cancelled", "pending"]) -> Job:
+        r"""Sets the completion status of a job.
 
-        def fun(*args) -> Any:
-            result = f(*args)
-
-            if not cond(*args):
-                raise PostconditionNotSatisfiedError(f"{name}{list(args) if args else ''}")
-
-            return result
-
-        return fun
-
-    def __call__(self, *args) -> Any:
-        return self.run(*args)
-
-    def __str__(self) -> str:
-        if self.array is None:
-            return self.name
-        else:
-            return self.name + "[" + comma_separated(self.array) + "]"
+        Arguments:
+            status: The completion status. The default status is `"pending"`.
+        """
+        assert status in ["success", "failure", "cancelled", "pending"]
+        self.status = status
+        return self
 
     @property
     def dependencies(self) -> Dict[Job, str]:
         return self.parents
 
-    def after(self, *deps: Job, status: str = "success"):
-        assert status in ["success", "failure", "any"]
+    def after(self, *deps: Job, status: Literal["success", "failure", "any"] = "success") -> Job:
+        r"""Adds dependencies to a job.
 
+        Arguments:
+            deps: A set of job dependencies.
+            status: The desired dependency status.
+        """
+        assert status in ["success", "failure", "any"]
         for dep in deps:
             self.add_parent(dep, status)
+        return self
 
     def detach(self, *deps: Job):
         for dep in deps:
             self.rm_parent(dep)
 
-    @property
-    def waitfor(self) -> str:
-        return self._waitfor
+    def waitfor(self, mode: Literal["all", "any"]) -> Job:
+        r"""Sets the waiting mode of a job.
 
-    @waitfor.setter
-    def waitfor(self, mode: str = "all"):
+        Arguments:
+            mode: The dependency waiting mode. The default mode is `"all"`.
+        """
         assert mode in ["all", "any"]
-
-        self._waitfor = mode
-
-    def ensure(self, condition: Callable):
-        if self.array is None:
-            assert accepts(condition), "postcondition should not expect arguments"
-        else:
-            assert accepts(condition, 0), "postcondition should expect an argument"
-
-        self._postconditions.append(pickle.dumps(condition))
+        self.wait_mode = mode
+        return self
 
     @property
-    def postconditions(self) -> List[Callable]:
-        return list(map(pickle.loads, self._postconditions))
-
-    @cached_property
-    def done(self) -> bool:
-        if not self.postconditions:
-            return False
-
-        condition = every(self.postconditions)
-
-        if self.array is None:
-            return condition()
+    def satisfy_status(self) -> Literal["ready", "never", "wait"]:
+        if self.wait_mode == "all" and self.unsatisfied:
+            return "never"
+        elif self.wait_mode == "all" and not self.dependencies:
+            return "ready"
+        elif self.wait_mode == "any" and self.satisfied:
+            return "ready"
+        elif self.wait_mode == "any" and not self.dependencies:
+            return "never"
         else:
-            return all(map(condition, self.array))
-
-    @property
-    def satisfiable(self) -> bool:
-        if self.unsatisfied:
-            if self.waitfor == "all":
-                return False
-            elif self.waitfor == "any" and not self.dependencies:
-                return False
-
-        return True
+            return "wait"
 
 
-def dfs(*nodes: Node, backward: bool = False) -> Iterator[Node]:
+N = TypeVar("N", bound=Node)
+
+
+def dfs(*nodes: N, backward: bool = False) -> Iterator[N]:
     queue = list(nodes)
     visited = set()
 
@@ -189,11 +168,11 @@ def dfs(*nodes: Node, backward: bool = False) -> Iterator[Node]:
         visited.add(node)
 
 
-def leafs(*nodes: Node) -> Set[Node]:
+def leafs(*nodes: N) -> Set[N]:
     return {node for node in dfs(*nodes, backward=False) if not node.children}
 
 
-def roots(*nodes: Node) -> Set[Node]:
+def roots(*nodes: N) -> Set[N]:
     return {node for node in dfs(*nodes, backward=True) if not node.parents}
 
 
@@ -229,33 +208,19 @@ def cycles(*nodes: Node, backward: bool = False) -> Iterator[List[Node]]:
 
 def prune(*jobs: Job) -> Set[Job]:
     for job in dfs(*jobs, backward=True):
-        if job.done:
+        if job.status != "pending":
             job.detach(*job.dependencies)
-        elif job.array is not None and job.postconditions:
-            condition = every(job.postconditions)
-            job.array = {i for i in job.array if not condition(i)}
-
-        satisfied, unsatisfied, pending = [], [], []
 
         for dep, status in job.dependencies.items():
-            if dep.done:
-                if status == "failure":  # first-order unsatisfiability
-                    unsatisfied.append(dep)
-                else:
-                    satisfied.append(dep)
+            if dep.status == "pending":
+                pass
+            elif dep.status == "cancelled":
+                job.unsatisfied[dep] = status
+            elif status == "any" or dep.status == status:
+                job.satisfied[dep] = status
             else:
-                pending.append(dep)
+                job.unsatisfied[dep] = status
 
-        job.detach(*satisfied, *unsatisfied)
+        job.detach(*job.satisfied, *job.unsatisfied)
 
-        if job.waitfor == "any" and satisfied:
-            job.detach(*pending)
-            job.unsatisfied.clear()
-        else:
-            job.unsatisfied.update(unsatisfied)
-
-    return {job for job in jobs if not job.done}
-
-
-class PostconditionNotSatisfiedError(Exception):
-    pass
+    return {job for job in jobs if job.status == "pending"}
