@@ -113,7 +113,7 @@ class Scheduler(ABC):
                 output = self.output(job)
 
             if output is not None:
-                output = cat(str(output), width=120)
+                output = cat(str(output), width=96)
 
             rows = [(str(job), self.state(job), output)]
 

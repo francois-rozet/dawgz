@@ -3,6 +3,7 @@ r"""Workflow graph components"""
 from __future__ import annotations
 
 from functools import partial
+from textwrap import shorten
 from typing import (
     Any,
     Callable,
@@ -83,7 +84,9 @@ class Job(Node):
         self.unsatisfied: Dict[Job, str] = {}
 
     def __repr__(self) -> str:
-        return f"{self.fun_name}(" + ", ".join(self.args_repr) + ")"
+        return (
+            f"{self.fun_name}(" + shorten(", ".join(self.args_repr), 32, placeholder=" ...") + ")"
+        )
 
     def __getstate__(self) -> Dict:
         state = self.__dict__.copy()

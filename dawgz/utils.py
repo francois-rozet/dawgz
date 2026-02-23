@@ -5,6 +5,7 @@ import cloudpickle as pickle
 import inspect
 import re
 import sys
+import textwrap
 import traceback
 import uuid
 
@@ -27,8 +28,7 @@ def cat(text: str, width: int) -> str:
         line = s
 
         if line:
-            for i in range(0, len(line), width):
-                lines.append(line[i : i + width])
+            lines.extend(textwrap.wrap(line, width=width))
         else:
             lines.append(line)  # keep empty lines
 
