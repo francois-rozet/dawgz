@@ -1,30 +1,29 @@
 #!/usr/bin/env python
 
-from dawgz import after, job, schedule
+import dawgz
 
 
-@job
+@dawgz.job
 def preprocessing():
     print("data preprocessing")
 
 
-evals = []
-previous = preprocessing
+@dawgz.job
+def train(i: int):
+    print(f"training step {i}")
 
-for i in range(1, 4):
 
-    @after(previous)
-    @job(name=f"train_{i}")
-    def train():
-        print(f"training step {i}")
+@dawgz.job
+def evaluate(i: int):
+    print(f"evaluation step {i}")
 
-    @after(train)
-    @job(name=f"eval_{i}")
-    def evaluate():
-        print(f"evaluation step {i}")
-
-    evals.append(evaluate)
-    previous = train
 
 if __name__ == "__main__":
-    schedule(*evals, name="train.py", backend="async")
+    main_jobs = [preprocessing()]
+    eval_jobs = []
+
+    for i in range(4):
+        main_jobs.append(train(i).after(main_jobs[-1]))
+        eval_jobs.append(evaluate(i).after(main_jobs[-1]))
+
+    dawgz.schedule(*eval_jobs, name="train.py", backend="async")

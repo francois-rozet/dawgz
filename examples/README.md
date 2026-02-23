@@ -5,65 +5,44 @@
 In [`simple.py`](simple.py) we define a workflow composed of 5 jobs. In summary,
 
 * `a` and `b` are concurrent.
-* `c` waits for `a` to complete with success.
-* `c` ensures that `2 + 2 == 2 * 2` and `1 + 2 + 3 == 1 * 2 * 3`.
-* `d` waits for `b` to complete with `'success'`.
-* `d` ensures that `i != 42` or `{i}.log` exists after successful completion.
+* `c(i)` waits for `b` to complete with success.
+* `c(i)` has already completed with success for `i != 42`.
+* `d` waits for all `c(i)` to complete.
 * `e` waits for `'any'` of its dependencies (either `a` or `d`) to complete.
 
-In `schedule`, the dependency graph of `c` and `e` is pruned with respect to the postconditions.
-
-* `c`'s postconditions are both always `True`, resulting in `c` being pruned out from the graph, even though its dependency `a` fails.
-* `d`'s postcondition returns `False` for `i = 42`. Therefore, all other indices are pruned out.
-
-Then, the jobs in the workflow graph are submitted, which results in the following output
+The workflow graph of `e` is scheduled and submitted by `schedule`, while pruning the jobs that have completed. We get the following ouput, where we notice that `e` finishes before `a` and despite its failure, reported in the error table.
 
 ```
 a
 b
 b
-d42
+c42
+d
 e
 a
-```
-
-as well as a table caused by the failure of `a`.
-
-```
     Job    Error
---  -----  ---------------------------------------------------------------------------------------------------
- 0  a      Traceback (most recent call last):
-             File "/home/username/env/lib/python3.8/site-packages/dawgz/schedulers.py", line 241, in exec
-               return await call()
-             File "/home/username/env/lib/python3.8/site-packages/dawgz/schedulers.py", line 254, in remote
-               return await asyncio.get_running_loop().run_in_executor(
-             File "/usr/lib/python3.8/concurrent/futures/thread.py", line 57, in run
-               result = self.fn(*self.args, **self.kwargs)
-             File "/home/username/env/lib/python3.8/site-packages/dawgz/utils.py", line 90, in runpickle
+--  -----  -----------------------------------------------------------------------------------------------------------
+ 0  a()    Traceback (most recent call last):
+             File "/home/francois/.venvs/dawgz/lib/python3.13/site-packages/dawgz/schedulers.py", line 257, in exec
+               return await asyncio.get_running_loop().run_in_executor(self.executor, runpickle, dump)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+             File "/home/francois/.venvs/dawgz/lib/python3.13/site-packages/dawgz/utils.py", line 69, in runpickle
                return pickle.loads(f)(*args, **kwargs)
-             File "/home/username/env/lib/python3.8/site-packages/dawgz/workflow.py", line 90, in call
-               result = f(*args)
-             File "simple.py", line 12, in a
+                      ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+             File "/home/francois/Documents/Git/dawgz/examples/simple.py", line 12, in a
                raise Exception()
            Exception
 
            The above exception was the direct cause of the following exception:
 
            Traceback (most recent call last):
-             File "/home/username/env/lib/python3.8/site-packages/dawgz/schedulers.py", line 136, in _submit
+             File "/home/francois/.venvs/dawgz/lib/python3.13/site-packages/dawgz/schedulers.py", line 180, in _submit
                return await self.exec(job)
-             File "/home/username/env/lib/python3.8/site-packages/dawgz/schedulers.py", line 251, in exec
+                      ^^^^^^^^^^^^^^^^^^^^
+             File "/home/francois/.venvs/dawgz/lib/python3.13/site-packages/dawgz/schedulers.py", line 259, in exec
                raise JobFailedError(str(job)) from e
-           dawgz.schedulers.JobFailedError: a
+           dawgz.schedulers.JobFailedError: a()
 ```
-
-However, because `schedule` is called with `prune=True`, running the script again leads to the following output
-
-```
-e
-```
-
-as the file `42.log` now exists and `e` only requires `a` or `d` to complete.
 
 ## Train example
 

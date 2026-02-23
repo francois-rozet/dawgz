@@ -1,12 +1,11 @@
 #!/usr/bin/env python
 
-import os
 import time
 
-from dawgz import after, ensure, job, schedule, waitfor
+import dawgz
 
 
-@job
+@dawgz.job
 def a():
     print("a")
     time.sleep(3)
@@ -14,7 +13,7 @@ def a():
     raise Exception()
 
 
-@job
+@dawgz.job
 def b():
     time.sleep(1)
     print("b")
@@ -22,30 +21,26 @@ def b():
     print("b")
 
 
-@after(a, status="success")
-@ensure(lambda: 2 + 2 == 2 * 2)
-@ensure(lambda: 1 + 2 + 3 == 1 * 2 * 3)
-@job
-def c():
-    print("c")
+@dawgz.job
+def c(i: int):
+    print(f"c{i}")
 
 
-@after(b)
-@ensure(lambda i: i != 42 or os.path.exists(f"{i}.log"))
-@job(array=100)
-def d(i: int):
-    print(f"d{i}")
-
-    with open(f"{i}.log", "w") as file:
-        file.write("done")
+@dawgz.job
+def d():
+    print("d")
 
 
-@after(a, d)
-@waitfor("any")
-@job
+@dawgz.job
 def e():
     print("e")
 
 
 if __name__ == "__main__":
-    schedule(c, e, name="simple.py", backend="async", prune=True)
+    a_job = a()
+    b_job = b()
+    c_jobs = [c(i).after(b_job).mark("pending" if i == 42 else "success") for i in range(100)]
+    d_job = d().after(*c_jobs)
+    e_job = e().after(a_job, d_job).waitfor("any")
+
+    dawgz.schedule(e_job, name="simple.py", backend="async", prune=True)
