@@ -4,17 +4,17 @@ import dawgz
 
 
 @dawgz.job
-def preprocessing():
+def preprocessing() -> None:
     print("data preprocessing")
 
 
 @dawgz.job
-def train(i: int):
+def train(i: int) -> None:
     print(f"training step {i}")
 
 
 @dawgz.job
-def evaluate(i: int):
+def evaluate(i: int) -> None:
     print(f"evaluation step {i}")
 
 

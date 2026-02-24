@@ -10,6 +10,7 @@ import shutil
 import subprocess
 
 from abc import ABC, abstractmethod
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from datetime import datetime
 from functools import lru_cache
@@ -17,7 +18,7 @@ from inspect import isawaitable
 from pathlib import Path
 from random import random
 from tabulate import tabulate
-from typing import Any, Dict, Sequence
+from typing import Any
 
 from .utils import cat, future, pickle, runpickle, slugify, trace, unique_id
 from .workflow import Job, cycles, prune
@@ -34,9 +35,9 @@ class Scheduler(ABC):
     def __init__(
         self,
         name: str = None,
-        settings: Dict[str, Any] = {},  # noqa: B006
+        settings: dict[str, Any] = {},  # noqa: B006
         **kwargs,
-    ):
+    ) -> None:
         r"""
         Arguments:
             name: The name of the workflow.
@@ -62,7 +63,7 @@ class Scheduler(ABC):
         self.results = {}
         self.traces = {}
 
-    def dump(self):
+    def dump(self) -> None:
         with open(self.path / "dump.pkl", "wb") as f:
             pickle.dump(self, f)
 
@@ -123,13 +124,13 @@ class Scheduler(ABC):
         raise NotImplementedError(f"'cancel' is not implemented for the {self.backend} backend.")
 
     @contextmanager
-    def context(self):
+    def context(self) -> Iterator[None]:
         try:
             yield None
         finally:
             pass
 
-    def __call__(self, *jobs: Job):
+    def __call__(self, *jobs: Job) -> None:
         for cycle in cycles(*jobs, backward=True):
             raise CyclicDependencyGraphError(" <- ".join(map(str, cycle)))
 
@@ -138,7 +139,7 @@ class Scheduler(ABC):
         with self.context():
             asyncio.run(self.wait(*jobs))
 
-    async def wait(self, *jobs: Job):
+    async def wait(self, *jobs: Job) -> None:
         if jobs:
             await asyncio.wait(map(asyncio.create_task, map(self.submit, jobs)))
             await asyncio.wait(map(asyncio.create_task, map(self.submit, self.order)))
@@ -173,7 +174,7 @@ class Scheduler(ABC):
         return await self.exec(job)
 
     @abstractmethod
-    async def satisfy(self, job: Job):
+    async def satisfy(self, job: Job) -> None:
         pass
 
     @abstractmethod
@@ -190,7 +191,7 @@ class AsyncScheduler(Scheduler):
 
     backend: str = "async"
 
-    def __init__(self, name: str = None, pools: int = None, **kwargs):
+    def __init__(self, name: str = None, pools: int = None, **kwargs) -> None:
         r"""
         Arguments:
             name: The name of the workflow.
@@ -203,7 +204,7 @@ class AsyncScheduler(Scheduler):
         self.pools = pools
 
     @contextmanager
-    def context(self):
+    def context(self) -> Iterator[None]:
         if self.pools is None:
             self.executor = cf.ThreadPoolExecutor()
         else:
@@ -214,7 +215,7 @@ class AsyncScheduler(Scheduler):
         finally:
             del self.executor
 
-    async def satisfy(self, job: Job):
+    async def satisfy(self, job: Job) -> None:
         pending = [
             asyncio.gather(self.submit(dep), future(status))
             for dep, status in job.dependencies.items()
@@ -261,7 +262,7 @@ class DummyScheduler(AsyncScheduler):
 
     backend: str = "dummy"
 
-    async def exec(self, job: Job):
+    async def exec(self, job: Job) -> None:
         print(f"START {job}")
         await asyncio.sleep(random())
         print(f"END   {job}")
@@ -281,7 +282,7 @@ class SlurmScheduler(Scheduler):
     """
 
     backend: str = "slurm"
-    translate: Dict[str, str] = {
+    translate: dict[str, str] = {
         "cpus": "cpus-per-task",
         "gpus": "gpus-per-task",
         "ram": "mem",
@@ -296,7 +297,7 @@ class SlurmScheduler(Scheduler):
         interpreter: str = "python",
         env: Sequence[str] = (),
         **kwargs,
-    ):
+    ) -> None:
         r"""
         Arguments:
             name: The name of the workflow.
@@ -316,7 +317,7 @@ class SlurmScheduler(Scheduler):
         self.env = env
 
     @lru_cache(None)  # noqa: B019
-    def sacct(self, jobid: str) -> Dict[str, str]:
+    def sacct(self, jobid: str) -> dict[str, str]:
         text = subprocess.run(
             ["sacct", "-j", jobid, "-o", "JobID,State", "-n", "-P", "-X"],
             capture_output=True,

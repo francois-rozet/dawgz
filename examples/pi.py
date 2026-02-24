@@ -7,7 +7,7 @@ import dawgz
 
 
 @dawgz.job(cpus=1, ram="2GB", time="5:00")
-def generate(i: int):
+def generate(i: int) -> None:
     print(f"Task {i + 1}")
 
     x = np.random.random(10000)
@@ -18,7 +18,7 @@ def generate(i: int):
 
 
 @dawgz.job(cpus=2, ram="4GB", time="15:00")
-def estimate():
+def estimate() -> None:
     files = glob.glob("pi_*.npy")
     stack = np.vstack([np.load(f) for f in files])
     pi_estimate = stack.mean() * 4

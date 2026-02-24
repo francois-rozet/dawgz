@@ -35,7 +35,7 @@ def cat(text: str, width: int) -> str:
     return "\n".join(lines)
 
 
-def eprint(*args, **kwargs):
+def eprint(*args, **kwargs) -> None:
     r"""Prints to the standard error stream."""
 
     print(*args, file=sys.stderr, **kwargs)
@@ -48,7 +48,7 @@ def future(obj: Any, return_exceptions: bool = False) -> asyncio.Future:
         if return_exceptions:
             fut = asyncio.Future()
 
-            def callback(self):
+            def callback(self: Any) -> None:
                 result = self.exception()
                 if result is None:
                     result = self.result()

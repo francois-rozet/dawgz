@@ -4,12 +4,11 @@ import argparse
 import csv
 
 from tabulate import tabulate
-from typing import List
 
 from .schedulers import DIR, Scheduler
 
 
-def table(workflows: List[List[str]], workflow: int = None, job: int = None):
+def table(workflows: list[list[str]], workflow: int = None, job: int = None) -> None:
     if workflow is None:
         headers = ("Name", "ID", "Date", "Backend", "Jobs", "Errors")
         table = tabulate(workflows, headers, showindex=True)
@@ -29,7 +28,7 @@ def table(workflows: List[List[str]], workflow: int = None, job: int = None):
     print(table)
 
 
-def cancel(workflows: List[List[str]], workflow: int, job: int = None):
+def cancel(workflows: list[list[str]], workflow: int, job: int = None) -> None:
     row = workflows[workflow]
     uuid = row[1]
     scheduler = Scheduler.load(DIR / uuid)
@@ -46,7 +45,7 @@ def cancel(workflows: List[List[str]], workflow: int, job: int = None):
         print(message)
 
 
-def main():
+def main() -> None:
     # Parser
     parser = argparse.ArgumentParser(description="DAWGZ's CLI")
 

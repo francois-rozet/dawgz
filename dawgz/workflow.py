@@ -2,43 +2,37 @@ r"""Workflow graph components"""
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterator, Sequence
 from functools import partial
 from textwrap import shorten
 from typing import (
     Any,
-    Callable,
-    Dict,
-    Iterator,
-    List,
     Literal,
-    Optional,
-    Sequence,
-    Set,
     TypeVar,
 )
 
 from .utils import pickle
 
 
-class Node(object):
+class Node:
     r"""Abstract graph node"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.children = {}
         self.parents = {}
 
-    def add_child(self, node: Node, edge: Any = None):
+    def add_child(self, node: Node, edge: Any = None) -> None:
         self.children[node] = edge
         node.parents[self] = edge
 
-    def add_parent(self, node: Node, edge: Any = None):
+    def add_parent(self, node: Node, edge: Any = None) -> None:
         node.add_child(self, edge)
 
-    def rm_child(self, node: Node):
+    def rm_child(self, node: Node) -> None:
         del self.children[node]
         del node.parents[self]
 
-    def rm_parent(self, node: Node):
+    def rm_parent(self, node: Node) -> None:
         node.rm_child(self)
 
 
@@ -50,12 +44,12 @@ class Job(Node):
         fun: Callable,
         /,
         args: Sequence[Any] = (),
-        kwargs: Dict[str, Any] = {},  # noqa: B006
+        kwargs: dict[str, Any] = {},  # noqa: B006
         *,
-        name: Optional[str] = None,
-        interpreter: Optional[str] = None,
-        settings: Dict[str, Any] = {},  # noqa: B006
-    ):
+        name: str | None = None,
+        interpreter: str | None = None,
+        settings: dict[str, Any] = {},  # noqa: B006
+    ) -> None:
         super().__init__()
 
         self.dump = pickle.dumps((fun, args, kwargs))
@@ -80,15 +74,15 @@ class Job(Node):
 
         # Dependencies
         self.wait_mode: str = "all"
-        self.satisfied: Dict[Job, str] = {}
-        self.unsatisfied: Dict[Job, str] = {}
+        self.satisfied: dict[Job, str] = {}
+        self.unsatisfied: dict[Job, str] = {}
 
     def __repr__(self) -> str:
         return (
             f"{self.fun_name}(" + shorten(", ".join(self.args_repr), 32, placeholder=" ...") + ")"
         )
 
-    def __getstate__(self) -> Dict:
+    def __getstate__(self) -> dict:
         state = self.__dict__.copy()
         state.pop("dump")
         return state
@@ -109,7 +103,7 @@ class Job(Node):
         return self
 
     @property
-    def dependencies(self) -> Dict[Job, str]:
+    def dependencies(self) -> dict[Job, str]:
         return self.parents
 
     def after(self, *deps: Job, status: Literal["success", "failure", "any"] = "success") -> Job:
@@ -124,7 +118,7 @@ class Job(Node):
             self.add_parent(dep, status)
         return self
 
-    def detach(self, *deps: Job):
+    def detach(self, *deps: Job) -> None:
         for dep in deps:
             self.rm_parent(dep)
 
@@ -171,15 +165,15 @@ def dfs(*nodes: N, backward: bool = False) -> Iterator[N]:
         visited.add(node)
 
 
-def leafs(*nodes: N) -> Set[N]:
+def leafs(*nodes: N) -> set[N]:
     return {node for node in dfs(*nodes, backward=False) if not node.children}
 
 
-def roots(*nodes: N) -> Set[N]:
+def roots(*nodes: N) -> set[N]:
     return {node for node in dfs(*nodes, backward=True) if not node.parents}
 
 
-def cycles(*nodes: Node, backward: bool = False) -> Iterator[List[Node]]:
+def cycles(*nodes: Node, backward: bool = False) -> Iterator[list[Node]]:
     queue = [list(nodes)]
     path = []
     pathset = set()
@@ -209,7 +203,7 @@ def cycles(*nodes: Node, backward: bool = False) -> Iterator[List[Node]]:
         visited.add(node)
 
 
-def prune(*jobs: Job) -> Set[Job]:
+def prune(*jobs: Job) -> set[Job]:
     for job in dfs(*jobs, backward=True):
         if job.status != "pending":
             job.detach(*job.dependencies)

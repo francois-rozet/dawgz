@@ -6,7 +6,7 @@ import dawgz
 
 
 @dawgz.job
-def a():
+def a() -> None:
     print("a")
     time.sleep(3)
     print("a")
@@ -14,7 +14,7 @@ def a():
 
 
 @dawgz.job
-def b():
+def b() -> None:
     time.sleep(1)
     print("b")
     time.sleep(1)
@@ -22,17 +22,17 @@ def b():
 
 
 @dawgz.job
-def c(i: int):
+def c(i: int) -> None:
     print(f"c{i}")
 
 
 @dawgz.job
-def d():
+def d() -> None:
     print("d")
 
 
 @dawgz.job
-def e():
+def e() -> None:
     print("e")
 
 

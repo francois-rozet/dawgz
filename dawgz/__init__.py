@@ -4,9 +4,10 @@ from __future__ import annotations
 
 __version__ = "2.0.0"
 
+from collections.abc import Callable
 from functools import partial, wraps
 from tabulate import tabulate
-from typing import Any, Callable, Dict, Literal, Optional, ParamSpec, Union, overload
+from typing import Any, Literal, ParamSpec, overload
 
 from .schedulers import (
     AsyncScheduler,
@@ -25,8 +26,8 @@ def job(
     fun: Callable[P, Any],
     /,
     *,
-    name: Optional[str] = ...,
-    settings: Dict[str, Any] = ...,
+    name: str | None = ...,
+    settings: dict[str, Any] = ...,
     **kwargs,
 ) -> Callable[P, Job]: ...
 
@@ -34,21 +35,21 @@ def job(
 @overload
 def job(
     *,
-    name: Optional[str] = ...,
-    settings: Dict[str, Any] = ...,
+    name: str | None = ...,
+    settings: dict[str, Any] = ...,
     **kwargs,
 ) -> Callable[[Callable[P, Any]], Callable[P, Job]]: ...
 
 
 def job(
-    fun: Optional[Callable[P, Any]] = None,
+    fun: Callable[P, Any] | None = None,
     /,
     *,
-    name: Optional[str] = None,
-    interpreter: Optional[str] = None,
-    settings: Dict[str, Any] = {},  # noqa: B006
+    name: str | None = None,
+    interpreter: str | None = None,
+    settings: dict[str, Any] = {},  # noqa: B006
     **kwargs,
-) -> Union[Callable[P, Job], Callable[[Callable[P, Any]], Callable[P, Job]]]:
+) -> Callable[P, Job] | Callable[[Callable[P, Any]], Callable[P, Job]]:
     r"""Decorator to capture the arguments of a function for later execution.
 
     Arguments:
@@ -69,7 +70,7 @@ def job(
         return partial(job, **kwargs)
 
     @wraps(fun)
-    def factory(*args, **kwargs):
+    def factory(*args, **kwargs) -> Job:
         return Job(
             fun,
             args,
