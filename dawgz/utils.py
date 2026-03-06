@@ -28,7 +28,7 @@ def cat(text: str, width: int) -> str:
         line = s
 
         if line:
-            lines.extend(textwrap.wrap(line, width=width))
+            lines.extend(textwrap.wrap(line, width=width, break_on_hyphens=False))
         else:
             lines.append(line)  # keep empty lines
 
