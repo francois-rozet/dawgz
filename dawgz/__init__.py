@@ -2,7 +2,7 @@ r"""Directed Acyclic Workflow Graph Scheduling"""
 
 from __future__ import annotations
 
-__version__ = "2.0.0"
+__version__ = "2.1.0"
 
 from collections.abc import Callable
 from functools import partial, wraps
