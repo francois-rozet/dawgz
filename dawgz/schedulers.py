@@ -20,7 +20,7 @@ from random import random
 from tabulate import tabulate
 from typing import Any
 
-from .utils import cat, future, pickle, runpickle, slugify, trace, unique_id
+from .utils import cat, future, human_uuid, pickle, runpickle, slugify, trace
 from .workflow import Job, cycles, prune
 
 DIR = os.environ.get("DAWGZ_DIR", ".dawgz")
@@ -49,7 +49,7 @@ class Scheduler(ABC):
 
         self.name = name
         self.date = datetime.now().replace(microsecond=0)
-        self.uid = unique_id()
+        self.uid = human_uuid()
 
         self.path = DIR / self.uid
         self.path.mkdir(parents=True)
@@ -283,11 +283,14 @@ class SlurmScheduler(Scheduler):
 
     backend: str = "slurm"
     translate: dict[str, str] = {
+        "tasks": "ntasks",
+        "tasks_per_node": "ntasks-per-node",
         "cpus": "cpus-per-task",
         "gpus": "gpus-per-task",
         "ram": "mem",
         "memory": "mem",
         "timelimit": "time",
+        "timeout": "time",
     }
 
     def __init__(
@@ -402,24 +405,19 @@ class SlurmScheduler(Scheduler):
         ## Settings
         settings = self.settings.copy()
         settings.update(job.settings)
+        settings = {self.translate.get(k, k).replace("_", "-"): v for k, v in settings.items()}
 
         assert "clusters" not in settings, "multi-cluster jobs not supported"
 
-        for key in settings:
-            assert not key.startswith("ntasks"), "multi-task jobs not supported"
-
-        nodes = settings.pop("nodes", 1)
+        if "ntasks" not in settings:
+            settings.setdefault("nodes", 1)
+            settings.setdefault("ntasks-per-node", 1)
 
         lines.append("#")
-        lines.append("#SBATCH --nodes=" + f"{nodes}")
-        lines.append("#SBATCH --ntasks-per-node=1")
 
-        for key, value in settings.items():
-            key = self.translate.get(key, key)
-
-            if type(value) is bool:
-                if value:
-                    lines.append(f"#SBATCH --{key}")
+        for key, value in sorted(settings.items()):
+            if isinstance(value, bool) and value:
+                lines.append(f"#SBATCH --{key}")
             else:
                 lines.append(f"#SBATCH --{key}={value}")
 

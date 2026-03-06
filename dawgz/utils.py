@@ -94,7 +94,9 @@ def trace(error: Exception) -> str:
     return "".join(lines).strip("\n")
 
 
-def unique_id() -> str:
+def human_uuid() -> str:
+    r"""Returns a human-readable UUID."""
+
     adjective = RandomWord().word(
         word_min_length=6,
         word_max_length=8,
