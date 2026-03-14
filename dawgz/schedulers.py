@@ -114,7 +114,7 @@ class Scheduler(ABC):
                 output = self.output(job)
 
             if output is not None:
-                output = cat(str(output), width=96)
+                output = cat(str(output), width=shutil.get_terminal_size((0, 0)).columns - 48)
 
             rows = [(str(job), self.state(job), output)]
 

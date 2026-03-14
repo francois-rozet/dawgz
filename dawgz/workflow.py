@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Sequence
 from functools import partial
-from textwrap import shorten
 from typing import (
     Any,
     Literal,
@@ -78,9 +77,12 @@ class Job(Node):
         self.unsatisfied: dict[Job, str] = {}
 
     def __repr__(self) -> str:
-        return (
-            f"{self.fun_name}(" + shorten(", ".join(self.args_repr), 32, placeholder=" ...") + ")"
-        )
+        job_repr = f"{self.fun_name}(" + ", ".join(self.args_repr) + ")"
+
+        if len(job_repr) > 28:
+            return job_repr[:24] + " ..."
+        else:
+            return job_repr
 
     def __getstate__(self) -> dict:
         state = self.__dict__.copy()
