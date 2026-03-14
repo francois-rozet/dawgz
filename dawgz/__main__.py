@@ -25,7 +25,10 @@ def table(workflows: list[list[str]], workflow: int | None = None, job: int | No
 
             table = scheduler.report(job)
 
-    print(table)
+    try:
+        print(table)
+    except BrokenPipeError:
+        pass
 
 
 def cancel(workflows: list[list[str]], workflow: int, job: int | None = None) -> None:
