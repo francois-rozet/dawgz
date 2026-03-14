@@ -44,7 +44,7 @@ tracker = "https://github.com/francois-rozet/dawgz/issues"
 line-length = 99
 
 [tool.ruff.lint]
-extend-select = ["ANN", "B", "I", "W", "UP"]
+extend-select = ["ANN", "B", "I", "UP", "W"]
 ignore = ["ANN002", "ANN003", "ANN401"]
 preview = true
 

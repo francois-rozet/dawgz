@@ -34,7 +34,7 @@ class Scheduler(ABC):
 
     def __init__(
         self,
-        name: str = None,
+        name: str | None = None,
         settings: dict[str, Any] = {},  # noqa: B006
         **kwargs,
     ) -> None:
@@ -99,7 +99,7 @@ class Scheduler(ABC):
     def output(self, job: Job) -> Any:
         return self.results[job]
 
-    def report(self, job: Job = None) -> str:
+    def report(self, job: Job | None = None) -> str:
         if job is None:
             headers = ("Job", "State")
             rows = [(str(job), self.state(job)) for job in self.order]
@@ -120,7 +120,7 @@ class Scheduler(ABC):
 
             return tabulate(rows, headers, showindex=[None])
 
-    def cancel(self, job: Job = None) -> str:
+    def cancel(self, job: Job | None = None) -> str:
         raise NotImplementedError(f"'cancel' is not implemented for the {self.backend} backend.")
 
     @contextmanager
@@ -191,7 +191,7 @@ class AsyncScheduler(Scheduler):
 
     backend: str = "async"
 
-    def __init__(self, name: str = None, pools: int = None, **kwargs) -> None:
+    def __init__(self, name: str | None = None, pools: int | None = None, **kwargs) -> None:
         r"""
         Arguments:
             name: The name of the workflow.
@@ -295,7 +295,7 @@ class SlurmScheduler(Scheduler):
 
     def __init__(
         self,
-        name: str = None,
+        name: str | None = None,
         shell: str = os.environ.get("SHELL", "/bin/sh"),
         interpreter: str = "python",
         env: Sequence[str] = (),
@@ -349,7 +349,7 @@ class SlurmScheduler(Scheduler):
         else:
             return None
 
-    def report(self, job: Job = None) -> str:
+    def report(self, job: Job | None = None) -> str:
         if job is None:
             headers = ("Job", "ID", "State")
             rows = []
@@ -366,7 +366,7 @@ class SlurmScheduler(Scheduler):
         else:
             return super().report(job)
 
-    def cancel(self, job: Job = None) -> str:
+    def cancel(self, job: Job | None = None) -> str:
         if job is None:
             jobids = list(self.results.values())
         else:

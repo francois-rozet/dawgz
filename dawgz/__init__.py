@@ -112,7 +112,7 @@ def schedule(
         )
     }
 
-    scheduler = backends.get(backend)(**kwargs)
+    scheduler = backends[backend](**kwargs)
     scheduler(*jobs)
     scheduler.dump()
 

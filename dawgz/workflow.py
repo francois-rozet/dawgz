@@ -20,11 +20,11 @@ class Node:
         self.children = {}
         self.parents = {}
 
-    def add_child(self, node: Node, edge: Any = None) -> None:
+    def add_child(self, node: Node, edge: Any | None = None) -> None:
         self.children[node] = edge
         node.parents[self] = edge
 
-    def add_parent(self, node: Node, edge: Any = None) -> None:
+    def add_parent(self, node: Node, edge: Any | None = None) -> None:
         node.add_child(self, edge)
 
     def rm_child(self, node: Node) -> None:

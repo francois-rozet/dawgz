@@ -8,7 +8,7 @@ from tabulate import tabulate
 from .schedulers import DIR, Scheduler
 
 
-def table(workflows: list[list[str]], workflow: int = None, job: int = None) -> None:
+def table(workflows: list[list[str]], workflow: int | None = None, job: int | None = None) -> None:
     if workflow is None:
         headers = ("Name", "ID", "Date", "Backend", "Jobs", "Errors")
         table = tabulate(workflows, headers, showindex=True)
@@ -28,7 +28,7 @@ def table(workflows: list[list[str]], workflow: int = None, job: int = None) -> 
     print(table)
 
 
-def cancel(workflows: list[list[str]], workflow: int, job: int = None) -> None:
+def cancel(workflows: list[list[str]], workflow: int, job: int | None = None) -> None:
     row = workflows[workflow]
     uuid = row[1]
     scheduler = Scheduler.load(DIR / uuid)
