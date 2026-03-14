@@ -55,11 +55,11 @@ class Job(Node):
 
         # String repr
         if name is None:
-            name = fun.__name__
-        else:
-            assert name.replace("_", "").isalnum(), (
-                f"function name can only contain underscore and alphanumeric characters, got '{name}'"
-            )
+            name = getattr(fun, "__name__", None)
+
+        assert isinstance(name, str) and name.replace("_", "").isalnum(), (
+            f"function name can only contain underscore and alphanumeric characters, got '{name}'"
+        )
 
         self.fun_name = name
         self.args_repr = [f"{a}" for a in args] + [f"{k}={v}" for k, v in kwargs.items()]
