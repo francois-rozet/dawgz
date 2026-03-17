@@ -298,7 +298,7 @@ class SlurmScheduler(Scheduler):
         name: str | None = None,
         shell: str = os.environ.get("SHELL", "/bin/sh"),
         interpreter: str = "python",
-        env: Sequence[str] = (),
+        env: list[str] | None = None,
         **kwargs,
     ) -> None:
         r"""
@@ -400,11 +400,11 @@ class SlurmScheduler(Scheduler):
             "#",
             f"#SBATCH --job-name={tag}",
             f"#SBATCH --output={logfile}",
+            "#",
         ]
 
         ## Settings
-        settings = self.settings.copy()
-        settings.update(job.settings)
+        settings = self.settings | job.settings
         settings = {self.translate.get(k, k).replace("_", "-"): v for k, v in settings.items()}
 
         assert "clusters" not in settings, "multi-cluster jobs not supported"
@@ -412,8 +412,6 @@ class SlurmScheduler(Scheduler):
         if "ntasks" not in settings:
             settings.setdefault("nodes", 1)
             settings.setdefault("ntasks-per-node", 1)
-
-        lines.append("#")
 
         for key, value in sorted(settings.items()):
             if isinstance(value, bool) and value:
@@ -442,6 +440,10 @@ class SlurmScheduler(Scheduler):
         ## Environment
         if self.env:
             lines.extend(self.env)
+            lines.append("")
+
+        if job.env:
+            lines.extend(job.env)
             lines.append("")
 
         ## Pickle job

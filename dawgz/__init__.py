@@ -47,6 +47,7 @@ def job(
     *,
     name: str | None = None,
     interpreter: str | None = None,
+    env: list[str] | None = None,
     settings: dict[str, Any] = {},  # noqa: B006
     **kwargs,
 ) -> Callable[P, Job] | Callable[[Callable[P, Any]], Callable[P, Job]]:
@@ -56,6 +57,8 @@ def job(
         fun: A function.
         name: The job name.
         interpreter: An optional Python interpreter command. For example, `uv run` or `torchrun`.
+        env: A sequence of shell commands to execute before the function is run. For example,
+            exporting environment variables or loading modules.
         settings: The settings of the job, interpreted by the scheduler. Settings include
             the allocated resources (e.g. `cpus=4`, `ram="16GB"`), the estimated runtime
             (e.g. `time="03:14:15"`), the partition (e.g. `partition="gpu"`) and much
@@ -77,6 +80,7 @@ def job(
             kwargs,
             name=name,
             interpreter=interpreter,
+            env=env,
             settings=settings,
         )
 
@@ -91,7 +95,11 @@ def schedule(
 ) -> Scheduler:
     r"""Schedules a group of jobs.
 
-    Jobs that have already been executed, as determined by their completion status, will be pruned.
+    The `async` and `dummy` backends execute jobs within the current Python interpreter,
+    and will therefore ignore interpreter, environment, and resource settings.
+
+    Jobs that have already been executed, as determined by their completion status, will
+    be pruned from the workflow.
 
     Arguments:
         jobs: A group of jobs describing a workflow.

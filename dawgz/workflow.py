@@ -47,6 +47,7 @@ class Job(Node):
         *,
         name: str | None = None,
         interpreter: str | None = None,
+        env: list[str] | None = None,
         settings: dict[str, Any] = {},  # noqa: B006
     ) -> None:
         super().__init__()
@@ -66,6 +67,7 @@ class Job(Node):
 
         # Settings
         self.interpreter = interpreter
+        self.env = env
         self.settings = settings
 
         # Status
