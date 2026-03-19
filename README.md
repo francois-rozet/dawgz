@@ -150,6 +150,21 @@ $ dawgz 1 0
     d_job = d().mark("success")
     ```
 
+    In previous versions, `dawgz.job` had the ability to limit the number of simultaneously running jobs in an array. Since version 2.0.0, the concept of job array is deprecated in favor of job lists. The number of simultaneous jobs can be throttled with the following pattern.
+
+    ```python
+    @dawgz.job
+    def e(i):
+        ...
+
+    jobs = [e(i) for i in range(42)]
+
+    # throttle to 3 simultaneous jobs
+    for i, job in enumerate(jobs):
+        if i >= 3:
+            job.after(jobs[i - 3])
+    ```
+
 
 * `dawgz.schedule` schedules a set of jobs, along their dependencies. Three backends are currently supported: `async`, `dummy` and `slurm`.
 
