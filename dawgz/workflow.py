@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Sequence
 from functools import partial
+from rich.pretty import pretty_repr
+from textwrap import indent
 from typing import (
     Any,
     Literal,
@@ -63,7 +65,12 @@ class Job(Node):
         )
 
         self.fun_name = name
-        self.args_repr = [f"{a}" for a in args] + [f"{k}={v}" for k, v in kwargs.items()]
+        self.args_repr = [
+            pretty_repr(a, indent_size=2, max_depth=1, max_width=48).strip("\n") for a in args
+        ] + [
+            f"{k}=" + pretty_repr(v, indent_size=2, max_depth=1, max_width=48).strip("\n")
+            for k, v in kwargs.items()
+        ]
 
         # Settings
         self.interpreter = interpreter
@@ -79,12 +86,12 @@ class Job(Node):
         self.unsatisfied: dict[Job, str] = {}
 
     def __repr__(self) -> str:
-        job_repr = f"{self.fun_name}(" + ", ".join(self.args_repr) + ")"
+        prepr = f"{self.fun_name}(" + ", ".join(self.args_repr) + ")"
 
-        if len(job_repr) > 28:
-            return job_repr[:24] + " ..."
-        else:
-            return job_repr
+        if "\n" in prepr or len(prepr) > 48:
+            prepr = f"{self.fun_name}(\n" + indent(",\n".join(self.args_repr), "  ") + "\n)"
+
+        return prepr
 
     def __getstate__(self) -> dict:
         state = self.__dict__.copy()
@@ -140,9 +147,12 @@ class Job(Node):
     def satisfy_status(self) -> Literal["ready", "never", "wait"]:
         if self.wait_mode == "all" and self.unsatisfied:
             return "never"
-        elif self.wait_mode == "all" and not self.dependencies:
-            return "ready"
-        elif self.wait_mode == "any" and self.satisfied:
+        elif (
+            self.wait_mode == "all"
+            and not self.dependencies
+            or self.wait_mode == "any"
+            and self.satisfied
+        ):
             return "ready"
         elif self.wait_mode == "any" and not self.dependencies:
             return "never"

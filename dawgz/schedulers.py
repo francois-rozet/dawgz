@@ -104,7 +104,7 @@ class Scheduler(ABC):
             headers = ("Job", "State")
             rows = [(str(job), self.state(job)) for job in self.order]
 
-            return tabulate(rows, headers, showindex=True)
+            return tabulate(rows, headers, showindex=True, maxcolwidths=[None, 48, 16])
         else:
             headers = ("Job", "State", "Output")
 
@@ -114,11 +114,11 @@ class Scheduler(ABC):
                 output = self.output(job)
 
             if output is not None:
-                output = cat(str(output), width=shutil.get_terminal_size((0, 0)).columns - 48)
+                output = cat(str(output), width=shutil.get_terminal_size((0, 0)).columns - 64 - 3 * 2)
 
             rows = [(str(job), self.state(job), output)]
 
-            return tabulate(rows, headers, showindex=[None])
+            return tabulate(rows, headers, showindex=[None], maxcolwidths=[None, 48, 16, None])
 
     def cancel(self, job: Job | None = None) -> str:
         raise NotImplementedError(f"'cancel' is not implemented for the {self.backend} backend.")
