@@ -8,7 +8,12 @@ from tabulate import tabulate
 from .schedulers import DIR, Scheduler
 
 
-def table(workflows: list[list[str]], workflow: int | None = None, job: int | None = None) -> None:
+def table(
+    workflows: list[list[str]],
+    workflow: int | None = None,
+    job: int | None = None,
+    i: int | None = None,
+) -> None:
     if workflow is None:
         headers = ("Name", "ID", "Date", "Backend", "Jobs", "Errors")
         table = tabulate(workflows, headers, showindex=True)
@@ -23,7 +28,7 @@ def table(workflows: list[list[str]], workflow: int | None = None, job: int | No
             jobs = list(scheduler.order)
             job = jobs[job]
 
-            table = scheduler.report(job)
+            table = scheduler.report(job, i)
 
     try:
         print(table)
@@ -31,7 +36,12 @@ def table(workflows: list[list[str]], workflow: int | None = None, job: int | No
         pass
 
 
-def cancel(workflows: list[list[str]], workflow: int, job: int | None = None) -> None:
+def cancel(
+    workflows: list[list[str]],
+    workflow: int,
+    job: int | None = None,
+    i: int | None = None,
+) -> None:
     row = workflows[workflow]
     uuid = row[1]
     scheduler = Scheduler.load(DIR / uuid)
@@ -42,7 +52,7 @@ def cancel(workflows: list[list[str]], workflow: int, job: int | None = None) ->
         jobs = list(scheduler.order)
         job = jobs[job]
 
-        message = scheduler.cancel(job)
+        message = scheduler.cancel(job, i)
 
     if message:
         print(message)
@@ -54,6 +64,7 @@ def main() -> None:
 
     parser.add_argument("workflow", default=None, nargs="?", type=int, help="workflow index")
     parser.add_argument("job", default=None, nargs="?", type=int, help="job index")
+    parser.add_argument("i", default=None, nargs="?", type=int, help="job array index")
 
     parser.add_argument("-c", "--cancel", default=False, action="store_true")
 
@@ -70,9 +81,9 @@ def main() -> None:
 
     # Action
     if args.cancel:
-        cancel(workflows, args.workflow, args.job)
+        cancel(workflows, args.workflow, args.job, args.i)
     else:
-        table(workflows, args.workflow, args.job)
+        table(workflows, args.workflow, args.job, args.i)
 
 
 if __name__ == "__main__":

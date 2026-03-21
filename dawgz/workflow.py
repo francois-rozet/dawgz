@@ -42,8 +42,7 @@ class Job(Node):
 
     def __init__(
         self,
-        fun: Callable,
-        /,
+        fun: Callable | None,
         args: Sequence[Any] = (),
         kwargs: dict[str, Any] = {},  # noqa: B006
         *,
@@ -54,7 +53,10 @@ class Job(Node):
     ) -> None:
         super().__init__()
 
-        self.dump = pickle.dumps((fun, args, kwargs))
+        if fun is None:
+            self.exe = None
+        else:
+            self.exe = pickle.dumps(partial(fun, *args, **kwargs))
 
         # String repr
         if name is None:
@@ -95,13 +97,8 @@ class Job(Node):
 
     def __getstate__(self) -> dict:
         state = self.__dict__.copy()
-        state.pop("dump")
+        state.pop("exe", None)
         return state
-
-    @property
-    def run(self) -> Callable[[], Any]:
-        fun, args, kwargs = pickle.loads(self.dump)
-        return partial(fun, *args, **kwargs)
 
     def mark(self, status: Literal["success", "failure", "cancelled", "pending"]) -> Job:
         r"""Sets the completion status of a job.
@@ -158,6 +155,47 @@ class Job(Node):
             return "never"
         else:
             return "wait"
+
+
+class JobArray(Job):
+    def __init__(self, *jobs: Job, throttle: int | None = None) -> None:
+        self.array = jobs
+        self.throttle = throttle
+
+        assert len(self.array) >= 1, "array should contain at least one job"
+        assert len(self.array) == len(set(self.array)), "array should not contain duplicates"
+
+        super().__init__(
+            fun=None,
+            name=self.array[0].name,
+            interpreter=self.array[0].interpreter,
+            env=self.array[0].env,
+            settings=self.array[0].settings,
+        )
+
+        for job in self.array:
+            assert not job.parents, "jobs in an array should not have dependencies"
+            assert not job.children, "jobs in an array should not have dependents"
+
+        for key in ("name", "interpreter", "env", "settings"):
+            for job in self.array:
+                assert getattr(job, key) == getattr(self, key), (
+                    f"all jobs in an array should have the same {key}"
+                )
+
+    def __len__(self) -> int:
+        return len(self.array)
+
+    def __getitem__(self, i: int) -> Job:
+        return self.array[i]
+
+    def __repr__(self) -> str:
+        if self.throttle is None:
+            range = f"0-{len(self) - 1}"
+        else:
+            range = f"0-{len(self) - 1}%{self.throttle}"
+
+        return f"{self.name}[{range}]"
 
 
 N = TypeVar("N", bound=Node)

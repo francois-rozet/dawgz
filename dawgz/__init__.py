@@ -16,7 +16,7 @@ from .schedulers import (
     SlurmScheduler,
 )
 from .utils import eprint
-from .workflow import Job
+from .workflow import Job, JobArray
 
 P = ParamSpec("P")
 
@@ -85,6 +85,18 @@ def job(
         )
 
     return factory
+
+
+def array(*jobs: Job, throttle: int | None = None) -> JobArray:
+    r"""Creates an array from a group of independent jobs.
+
+    Arguments:
+        jobs: A group of jobs. These jobs should not have dependencies or dependents.
+        throttle: The maximum number of simultaneously running jobs in the array.
+            Only affects the Slurm backend.
+    """
+
+    return JobArray(*jobs, throttle=throttle)
 
 
 def schedule(
