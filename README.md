@@ -150,21 +150,19 @@ $ dawgz 1 0
     d_job = d().mark("success")
     ```
 
-    In previous versions, `dawgz.job` had the ability to limit the number of simultaneously running jobs in an array. Since version 2.0.0, the concept of job array is deprecated in favor of job lists. The number of simultaneous jobs can be throttled with the following pattern.
+* `dawgz.array` creates a job array from a group of independent jobs. The primary use case of job arrays is to schedule a large number of small jobs while throttling the number of simultaneously running jobs without saturating the Slurm queue. The returned object is itself a `dawgz.Job` instance and supports the methods presented above (`after`, `waitfor`, ...).
 
     ```python
     @dawgz.job
     def e(i):
         ...
 
-    jobs = [e(i) for i in range(42)]
+    e_jobs = [e(i) for i in range(42)]
+    e_array = dawgz.array(*e_jobs, throttle=3)
+    e_array.after(d_job)
 
-    # throttle to 3 simultaneous jobs
-    for i, job in enumerate(jobs):
-        if i >= 3:
-            job.after(jobs[i - 3])
+    dawgz.schedule(e_array, backend="slurm")
     ```
-
 
 * `dawgz.schedule` schedules a set of jobs, along their dependencies. Three backends are currently supported: `async`, `dummy` and `slurm`.
 

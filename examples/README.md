@@ -21,25 +21,22 @@ d
 e
 a
     Job    Error
---  -----  -----------------------------------------------------------------------------------------------------------
+--  -----  -------------------------------------------------------------------------------------------------------
  0  a()    Traceback (most recent call last):
-             File "/home/francois/.venvs/dawgz/lib/python3.13/site-packages/dawgz/schedulers.py", line 257, in exec
-               return await asyncio.get_running_loop().run_in_executor(self.executor, runpickle, dump)
-                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-             File "/home/francois/.venvs/dawgz/lib/python3.13/site-packages/dawgz/utils.py", line 69, in runpickle
+             File "/home/francois/.venvs/dawgz/lib/python3.13/site-packages/dawgz/schedulers.py", line 289, in exec
+               return await loop.run_in_executor(self.executor, runpickle, job.exe)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+             File "/home/francois/.venvs/dawgz/lib/python3.13/site-packages/dawgz/utils.py", line 71, in runpickle
                return pickle.loads(f)(*args, **kwargs)
                       ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-             File "/home/francois/Documents/Git/dawgz/examples/simple.py", line 12, in a
+             File "/Users/frozet/Documents/Git/dawgz/examples/simple.py", line 13, in a
                raise Exception()
            Exception
 
            The above exception was the direct cause of the following exception:
 
            Traceback (most recent call last):
-             File "/home/francois/.venvs/dawgz/lib/python3.13/site-packages/dawgz/schedulers.py", line 180, in _submit
-               return await self.exec(job)
-                      ^^^^^^^^^^^^^^^^^^^^
-             File "/home/francois/.venvs/dawgz/lib/python3.13/site-packages/dawgz/schedulers.py", line 259, in exec
+             File "/home/francois/.venvs/dawgz/lib/python3.13/site-packages/dawgz/schedulers.py", line 291, in exec
                raise JobFailedError(str(job)) from e
            dawgz.schedulers.JobFailedError: a()
 ```
@@ -58,7 +55,9 @@ and scheduling the dependency graph results in the following output
 
 ```
 data preprocessing
+training step 0
 training step 1
+evaluation step 0
 evaluation step 1
 training step 2
 evaluation step 2
@@ -69,18 +68,22 @@ evaluation step 3
 If we change the backend to `'dummy'`, we observe that the evaluation steps are not necessarily consecutive.
 
 ```
-START preprocessing
-END   preprocessing
-START train_1
-END   train_1
-START eval_1
-START train_2
-END   eval_1
-END   train_2
-START eval_2
-START train_3
-END   train_3
-START eval_3
-END   eval_3
-END   eval_2
+START preprocessing()
+END   preprocessing()
+START train(0)
+END   train(0)
+START evaluate(0)
+START train(1)
+END   train(1)
+START evaluate(1)
+START train(2)
+END   evaluate(0)
+END   evaluate(1)
+END   train(2)
+START evaluate(2)
+START train(3)
+END   train(3)
+START evaluate(3)
+END   evaluate(3)
+END   evaluate(2)
 ```
