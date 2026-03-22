@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures as cf
 import csv
-import os
 import random
 import shutil
 import subprocess
@@ -29,12 +28,7 @@ class Scheduler(ABC):
 
     backend: str = None
 
-    def __init__(
-        self,
-        name: str | None = None,
-        settings: dict[str, Any] = {},  # noqa: B006
-        **kwargs,
-    ) -> None:
+    def __init__(self, name: str | None = None) -> None:
         r"""
         Arguments:
             name: The name of the workflow.
@@ -50,10 +44,6 @@ class Scheduler(ABC):
 
         self.path = get_dawgz_dir() / self.uid
         self.path.mkdir(parents=True)
-
-        # Settings
-        self.settings = settings.copy()
-        self.settings.update(kwargs)
 
         # Jobs
         self.order = {}
@@ -207,15 +197,14 @@ class AsyncScheduler(Scheduler):
 
     backend: str = "async"
 
-    def __init__(self, name: str | None = None, pools: int | None = None, **kwargs) -> None:
+    def __init__(self, name: str | None = None, pools: int | None = None) -> None:
         r"""
         Arguments:
             name: The name of the workflow.
             pools: The number of processing pools. If `None`, use threads instead.
-            kwargs: Keyword arguments passed to :class:`Scheduler`.
         """
 
-        super().__init__(name=name, **kwargs)
+        super().__init__(name=name)
 
         self.pools = pools
 
@@ -322,31 +311,13 @@ class SlurmScheduler(Scheduler):
         "timeout": "time",
     }
 
-    def __init__(
-        self,
-        name: str | None = None,
-        shell: str = os.environ.get("SHELL", "/bin/sh"),
-        interpreter: str = "python",
-        env: list[str] | None = None,
-        **kwargs,
-    ) -> None:
+    def __init__(self, name: str | None = None) -> None:
         r"""
         Arguments:
             name: The name of the workflow.
-            shell: The scripting shell.
-            interpreter: The Python interpreter.
-            env: A sequence of commands to execute before each job is launched.
-            kwargs: Keyword arguments passed to :class:`Scheduler`.
         """
 
-        super().__init__(name=name, **kwargs)
-
-        assert shutil.which("sbatch") is not None, "sbatch executable not found"
-
-        # Environment
-        self.shell = shell
-        self.interpreter = interpreter
-        self.env = env
+        super().__init__(name=name)
 
     @staticmethod
     @cache
@@ -438,7 +409,7 @@ class SlurmScheduler(Scheduler):
 
         # Submission script
         lines = [
-            f"#!{self.shell}",
+            f"#!{job.shell}",
             "#",
             f"#SBATCH --job-name={tag}",
         ]
@@ -453,8 +424,7 @@ class SlurmScheduler(Scheduler):
         lines.append("#")
 
         ## Settings
-        settings = self.settings | job.settings
-        settings = {self.translate.get(k, k).replace("_", "-"): v for k, v in settings.items()}
+        settings = {self.translate.get(k, k).replace("_", "-"): v for k, v in job.settings.items()}
 
         assert "clusters" not in settings, "multi-cluster jobs not supported"
 
@@ -487,10 +457,6 @@ class SlurmScheduler(Scheduler):
         lines.append("")
 
         ## Environment
-        if self.env:
-            lines.extend(self.env)
-            lines.append("")
-
         if job.env:
             lines.extend(job.env)
             lines.append("")
@@ -528,12 +494,7 @@ class SlurmScheduler(Scheduler):
                     ])
                 )
 
-        if job.interpreter is None:
-            interpreter = self.interpreter
-        else:
-            interpreter = job.interpreter
-
-        lines.append(f"srun {interpreter} {pyfile}")
+        lines.append(f"srun {job.interpreter} {pyfile}")
         lines.append("")
 
         ## Save

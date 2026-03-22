@@ -47,7 +47,8 @@ class Job(Node):
         kwargs: dict[str, Any] = {},  # noqa: B006
         *,
         name: str | None = None,
-        interpreter: str | None = None,
+        shell: str = "/bin/bash",
+        interpreter: str = "python",
         env: list[str] | None = None,
         settings: dict[str, Any] = {},  # noqa: B006
     ) -> None:
@@ -75,6 +76,7 @@ class Job(Node):
         ]
 
         # Settings
+        self.shell = shell
         self.interpreter = interpreter
         self.env = env
         self.settings = settings
@@ -177,7 +179,7 @@ class JobArray(Job):
             assert not job.parents, "jobs in an array should not have dependencies"
             assert not job.children, "jobs in an array should not have dependents"
 
-        for key in ("name", "interpreter", "env", "settings"):
+        for key in ("name", "shell", "interpreter", "env", "settings"):
             for job in self.array:
                 assert getattr(job, key) == getattr(self, key), (
                     f"all jobs in an array should have the same {key}"

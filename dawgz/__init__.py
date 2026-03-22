@@ -1,7 +1,5 @@
 r"""Directed Acyclic Workflow Graph Scheduling"""
 
-from __future__ import annotations
-
 __version__ = "2.3.1"
 
 from collections.abc import Callable
@@ -47,7 +45,8 @@ def job(
     /,
     *,
     name: str | None = None,
-    interpreter: str | None = None,
+    shell: str = "/bin/bash",
+    interpreter: str = "python",
     env: list[str] | None = None,
     settings: dict[str, Any] = {},  # noqa: B006
     **kwargs,
@@ -57,7 +56,8 @@ def job(
     Arguments:
         fun: A function.
         name: The job name.
-        interpreter: An optional Python interpreter command. For example, `uv run` or `torchrun`.
+        shell: The scripting shell.
+        interpreter: The interpreter command. For example, `python`, `uv run` or `torchrun`.
         env: A sequence of shell commands to execute before the function is run. For example,
             exporting environment variables or loading modules.
         settings: The settings of the job, interpreted by the scheduler. Settings include
@@ -80,6 +80,7 @@ def job(
             args,
             kwargs,
             name=name,
+            shell=shell,
             interpreter=interpreter,
             env=env,
             settings=settings,
