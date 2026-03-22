@@ -67,13 +67,17 @@ class Job(Node):
             f"function name can only contain underscore and alphanumeric characters, got '{name}'"
         )
 
+        def prepr(x: object) -> str:
+            return pretty_repr(
+                x,
+                indent_size=2,
+                max_depth=2,
+                max_width=48,
+                max_string=24,
+            ).strip("\n")
+
         self.name = name
-        self.args_repr = [
-            pretty_repr(a, indent_size=2, max_depth=1, max_width=48).strip("\n") for a in args
-        ] + [
-            f"{k}=" + pretty_repr(v, indent_size=2, max_depth=1, max_width=48).strip("\n")
-            for k, v in kwargs.items()
-        ]
+        self.args_repr = [prepr(a) for a in args] + [f"{k}=" + prepr(v) for k, v in kwargs.items()]
 
         # Settings
         self.shell = shell
