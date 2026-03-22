@@ -64,7 +64,7 @@ class Job(Node):
             f"function name can only contain underscore and alphanumeric characters, got '{name}'"
         )
 
-        self.fun_name = name
+        self.name = name
         self.args_repr = [
             pretty_repr(a, indent_size=2, max_depth=1, max_width=48).strip("\n") for a in args
         ] + [
@@ -86,10 +86,10 @@ class Job(Node):
         self.unsatisfied: dict[Job, str] = {}
 
     def __repr__(self) -> str:
-        prepr = f"{self.fun_name}(" + ", ".join(self.args_repr) + ")"
+        prepr = f"{self.name}(" + ", ".join(self.args_repr) + ")"
 
         if "\n" in prepr or len(prepr) > 48:
-            prepr = f"{self.fun_name}(\n" + indent(",\n".join(self.args_repr), "  ") + "\n)"
+            prepr = f"{self.name}(\n" + indent(",\n".join(self.args_repr), "  ") + "\n)"
 
         return prepr
 

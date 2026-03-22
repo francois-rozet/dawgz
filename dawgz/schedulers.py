@@ -88,7 +88,7 @@ class Scheduler(ABC):
         else:
             i = self.order[job] = len(self.order)
 
-        return f"{i:04d}_{slugify(job.fun_name)}"
+        return f"{i:04d}_{slugify(job.name)}"
 
     def state(self, job: Job) -> str:
         if job in self.traces:
