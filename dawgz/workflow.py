@@ -255,7 +255,7 @@ def cycles(*nodes: Node, backward: bool = False) -> Iterator[list[Node]]:
         visited.add(node)
 
 
-def prune(*jobs: Job) -> set[Job]:
+def prune(*jobs: Job) -> list[Job]:
     for job in dfs(*jobs, backward=True):
         if job.status != "pending":
             job.detach(*job.dependencies)
@@ -272,4 +272,4 @@ def prune(*jobs: Job) -> set[Job]:
 
         job.detach(*job.satisfied, *job.unsatisfied)
 
-    return {job for job in jobs if job.status == "pending"}
+    return list(dict.fromkeys(job for job in jobs if job.status == "pending"))

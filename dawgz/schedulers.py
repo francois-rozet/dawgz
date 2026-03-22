@@ -145,7 +145,7 @@ class Scheduler(ABC):
         for cycle in cycles(*jobs, backward=True):
             raise CyclicDependencyGraphError(" <- ".join(map(str, cycle)))
 
-        jobs = prune(*set(jobs))
+        jobs = prune(*dict.fromkeys(jobs))
 
         with self.context():
             asyncio.run(self.wait(*jobs))
