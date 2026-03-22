@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any
 
 import dawgz
-import dawgz.schedulers
 
 from dawgz.schedulers import CyclicDependencyGraphError
 
@@ -37,8 +36,8 @@ def mutate_list(items: list) -> list:
 
 
 @pytest.fixture(autouse=True)
-def redirect_dawgz_dir(tmp_path: Path, monkeypatch: object) -> None:
-    monkeypatch.setattr(dawgz.schedulers, "DIR", tmp_path / ".dawgz")
+def redirect_dawgz_dir(tmp_path: Path) -> None:
+    dawgz.set_dawgz_dir(tmp_path / ".dawgz")
 
 
 @pytest.fixture(params=[None, 4], ids=["threads", "processes"])

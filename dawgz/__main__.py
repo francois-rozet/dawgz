@@ -5,22 +5,33 @@ import csv
 
 from tabulate import tabulate
 
-from .schedulers import DIR, Scheduler
+from dawgz import Scheduler, get_dawgz_dir
+
+
+def list_workflows() -> list[list[str]]:
+    record = get_dawgz_dir() / "workflows.csv"
+
+    if record.exists():
+        with open(record) as f:
+            return list(csv.reader(f))
+    else:
+        return []
 
 
 def table(
-    workflows: list[list[str]],
     workflow: int | None = None,
     job: int | None = None,
     i: int | None = None,
 ) -> None:
+    workflows = list_workflows()
+
     if workflow is None:
         headers = ("Name", "ID", "Date", "Backend", "Jobs", "Errors")
         table = tabulate(workflows, headers, showindex=True)
     else:
         row = workflows[workflow]
         uid = row[1]
-        scheduler = Scheduler.load(DIR / uid)
+        scheduler = Scheduler.load(get_dawgz_dir() / uid)
 
         if job is None:
             table = scheduler.report()
@@ -37,14 +48,15 @@ def table(
 
 
 def cancel(
-    workflows: list[list[str]],
     workflow: int,
     job: int | None = None,
     i: int | None = None,
 ) -> None:
+    workflows = list_workflows()
+
     row = workflows[workflow]
     uuid = row[1]
-    scheduler = Scheduler.load(DIR / uuid)
+    scheduler = Scheduler.load(get_dawgz_dir() / uuid)
 
     if job is None:
         message = scheduler.cancel()
@@ -70,20 +82,11 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    # Workflows
-    record = DIR / "workflows.csv"
-
-    if record.exists():
-        with open(record) as f:
-            workflows = list(csv.reader(f))
-    else:
-        workflows = []
-
     # Action
     if args.cancel:
-        cancel(workflows, args.workflow, args.job, args.i)
+        cancel(args.workflow, args.job, args.i)
     else:
-        table(workflows, args.workflow, args.job, args.i)
+        table(args.workflow, args.job, args.i)
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ from functools import partial, wraps
 from tabulate import tabulate
 from typing import Any, Literal, ParamSpec, overload
 
+from .constants import get_dawgz_dir, set_dawgz_dir  # noqa: F401
 from .schedulers import (
     AsyncScheduler,
     DummyScheduler,

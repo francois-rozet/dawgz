@@ -6,6 +6,7 @@ import asyncio
 import concurrent.futures as cf
 import csv
 import os
+import random
 import shutil
 import subprocess
 
@@ -15,15 +16,12 @@ from contextlib import contextmanager
 from datetime import datetime
 from functools import cache
 from pathlib import Path
-from random import random
 from tabulate import tabulate
 from typing import Any
 
+from .constants import get_dawgz_dir
 from .utils import cat, future, human_uuid, pickle, runpickle, slugify, trace
 from .workflow import Job, JobArray, cycles, prune
-
-DIR = os.environ.get("DAWGZ_DIR", ".dawgz")
-DIR = Path(DIR).expanduser().resolve()
 
 
 class Scheduler(ABC):
@@ -50,7 +48,7 @@ class Scheduler(ABC):
         self.date = datetime.now().replace(microsecond=0)
         self.uid = human_uuid()
 
-        self.path = DIR / self.uid
+        self.path = get_dawgz_dir() / self.uid
         self.path.mkdir(parents=True)
 
         # Settings
@@ -296,7 +294,7 @@ class DummyScheduler(AsyncScheduler):
 
     async def exec(self, job: Job) -> None:
         print(f"START {job}")
-        await asyncio.sleep(random())
+        await asyncio.sleep(random.random())
         print(f"END   {job}")
 
 
