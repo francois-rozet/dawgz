@@ -65,6 +65,28 @@ def future(obj: Any, return_exceptions: bool = False) -> asyncio.Future:
     return fut
 
 
+def human_uuid() -> str:
+    r"""Returns a human-readable UUID."""
+
+    adjective = RandomWord().word(
+        word_min_length=6,
+        word_max_length=8,
+        include_categories=["adjectives"],
+        exclude_with_spaces=True,
+    )
+
+    noun = RandomWord().word(
+        word_min_length=14 - len(adjective),
+        word_max_length=14 - len(adjective),
+        include_categories=["nouns"],
+        exclude_with_spaces=True,
+    )
+
+    hex = uuid.uuid4().hex[:8]
+
+    return f"{adjective}_{noun}_{hex}"
+
+
 def runpickle(f: bytes, /, *args, **kwargs) -> Any:
     r"""Runs a pickled function `f` with arguments."""
 
@@ -92,25 +114,3 @@ def trace(error: Exception) -> str:
     lines = [line for line in lines if not re.search(r"futures\/\w+\.py", line)]
 
     return "".join(lines).strip("\n")
-
-
-def human_uuid() -> str:
-    r"""Returns a human-readable UUID."""
-
-    adjective = RandomWord().word(
-        word_min_length=6,
-        word_max_length=8,
-        include_categories=["adjectives"],
-        exclude_with_spaces=True,
-    )
-
-    noun = RandomWord().word(
-        word_min_length=14 - len(adjective),
-        word_max_length=14 - len(adjective),
-        include_categories=["nouns"],
-        exclude_with_spaces=True,
-    )
-
-    hex = uuid.uuid4().hex[:8]
-
-    return f"{adjective}_{noun}_{hex}"
