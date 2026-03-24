@@ -2,8 +2,12 @@ r"""Module's main"""
 
 import argparse
 import csv
+import rich.box
+import rich.console
+import rich.table
+import shutil
 
-from tabulate import tabulate
+from typing import Literal
 
 from dawgz import Scheduler, get_dawgz_dir
 
@@ -18,16 +22,26 @@ def list_workflows() -> list[list[str]]:
         return []
 
 
-def table(
+def report(
     workflow: int | None = None,
     job: int | None = None,
     i: int | None = None,
+    entry: Literal["source", "settings", "input", "output"] = "output",
 ) -> None:
     workflows = list_workflows()
 
     if workflow is None:
-        headers = ("Name", "ID", "Date", "Backend", "Jobs", "Errors")
-        table = tabulate(workflows, headers, showindex=True)
+        table = rich.table.Table(box=rich.box.ROUNDED)
+        table.add_column("", justify="right", no_wrap=True, min_width=2)
+        table.add_column("Name", justify="left", no_wrap=True)
+        table.add_column("ID", justify="left", no_wrap=False)
+        table.add_column("Date", justify="left", no_wrap=True)
+        table.add_column("Backend", justify="left", no_wrap=True)
+        table.add_column("Jobs", justify="right", no_wrap=True)
+        table.add_column("Errors", justify="right", no_wrap=True)
+
+        for j, row in enumerate(workflows):
+            table.add_row(str(j), *row)
     else:
         row = workflows[workflow]
         uid = row[1]
@@ -36,13 +50,10 @@ def table(
         if job is None:
             table = scheduler.report()
         else:
-            jobs = list(scheduler.order)
-            job = jobs[job]
-
-            table = scheduler.report(job, i)
+            table = scheduler.report(job, i, entry=entry)
 
     try:
-        print(table)
+        rich.console.Console(width=shutil.get_terminal_size((1_000_000, 0)).columns).print(table)
     except BrokenPipeError:
         pass
 
@@ -61,9 +72,6 @@ def cancel(
     if job is None:
         message = scheduler.cancel()
     else:
-        jobs = list(scheduler.order)
-        job = jobs[job]
-
         message = scheduler.cancel(job, i)
 
     if message:
@@ -78,7 +86,17 @@ def main() -> None:
     parser.add_argument("job", default=None, nargs="?", type=int, help="job index")
     parser.add_argument("i", default=None, nargs="?", type=int, help="job array index")
 
-    parser.add_argument("-c", "--cancel", default=False, action="store_true")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("-c", "--cancel", default=False, action="store_true", help="cancel workflow or job")
+
+    for entry in ["source", "settings", "input", "output"]:
+        group.add_argument(
+            f"--{entry}",
+            dest="entry",
+            action="store_const",
+            const=entry,
+            help=f"report job {entry} in table",
+        )
 
     args = parser.parse_args()
 
@@ -86,7 +104,7 @@ def main() -> None:
     if args.cancel:
         cancel(args.workflow, args.job, args.i)
     else:
-        table(args.workflow, args.job, args.i)
+        report(args.workflow, args.job, args.i, args.entry or "output")
 
 
 if __name__ == "__main__":

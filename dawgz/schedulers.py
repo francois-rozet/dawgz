@@ -6,7 +6,13 @@ import asyncio
 import concurrent.futures as cf
 import csv
 import random
-import shutil
+import re
+import rich.box
+import rich.highlighter
+import rich.style
+import rich.syntax
+import rich.table
+import rich.text
 import subprocess
 
 from abc import ABC, abstractmethod
@@ -15,8 +21,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from functools import cache
 from pathlib import Path
-from tabulate import tabulate
-from typing import Any
+from typing import Any, Literal
 
 from .constants import get_dawgz_dir
 from .utils import (
@@ -32,12 +37,39 @@ from .utils import (
 from .workflow import Job, JobArray, cycles, prune
 
 
+class StateHighlighter(rich.highlighter.Highlighter):
+    def highlight(self, text: rich.text.Text) -> None:
+        for match in re.finditer(r"\w+", text.plain):
+            state, i, j = match.group(), match.start(), match.end()
+
+            if state == "PENDING":
+                text.stylize("dim", i, j)
+            elif state == "RUNNING":
+                text.stylize("cyan", i, j)
+            elif state == "COMPLETED":
+                text.stylize("green", i, j)
+            elif state == "FAILED":
+                text.stylize("red", i, j)
+            elif state == "CANCELLED":
+                text.stylize("dark_orange", i, j)
+            else:
+                pass
+
+
+class ANSITheme(rich.syntax.ANSISyntaxTheme):
+    def __init__(self) -> None:
+        super().__init__({
+            token: style + rich.style.Style(bold=False)
+            for token, style in rich.syntax.ANSI_DARK.items()
+        })
+
+
 class Scheduler(ABC):
     r"""Abstract workflow scheduler."""
 
     backend: str = None
 
-    def __init__(self, name: str | None = None) -> None:
+    def __init__(self, name: str) -> None:
         r"""
         Arguments:
             name: The name of the workflow.
@@ -55,9 +87,9 @@ class Scheduler(ABC):
         self.path.mkdir(parents=True)
 
         # Jobs
-        self.order = {}
-        self.results = {}
-        self.traces = {}
+        self.order: dict[Job, int] = {}
+        self.results: dict[Job, Any] = {}
+        self.traces: dict[Job, str] = {}
 
     def dump(self) -> None:
         with open(self.path / "dump.pkl", mode="wb") as f:
@@ -75,7 +107,7 @@ class Scheduler(ABC):
 
     @staticmethod
     def load(path: Path) -> Scheduler:
-        with open(path / "dump.pkl", "rb") as f:
+        with open(path / "dump.pkl", mode="rb") as f:
             return pickle.load(f)
 
     def tag(self, job: Job) -> str:
@@ -92,46 +124,83 @@ class Scheduler(ABC):
         else:
             return "COMPLETED"
 
-    def output(self, job: Job, i: int | None = None) -> Any:
-        if isinstance(job, JobArray):
-            return self.results[job][i]
-        else:
-            return self.results[job]
-
-    def report(self, job: Job | None = None, i: int | None = None) -> str:
-        if job is None:
-            headers = ("Job", "State")
-            rows = [(str(job), self.state(job)) for job in self.order]
-
-            return tabulate(rows, headers, showindex=True, maxcolwidths=[None, 48, 16])
-        else:
-            headers = ("Job", "State", "Output")
-
-            if job in self.traces:
-                index = [None]
-                rows = [(str(job), self.state(job), self.traces[job])]
-            elif isinstance(job, JobArray):
-                index = list(range(len(job))) if i is None else [i]
-                rows = [(str(job[i]), self.state(job, i), self.output(job, i)) for i in index]
+    def output(self, job: Job, i: int | None = None) -> str | None:
+        if job in self.traces:
+            return self.traces[job]
+        elif job in self.results:
+            if isinstance(job, JobArray):
+                result = self.results[job][i]
             else:
-                index = [None]
-                rows = [(str(job), self.state(job), self.output(job))]
+                result = self.results[job]
 
-            terminal_width = shutil.get_terminal_size((0, 0)).columns
+            return None if result is None else str(result)
+        else:
+            return None
 
-            rows = [
-                (
-                    repr,
-                    state,
-                    cat("" if output is None else str(output), width=terminal_width - 64 - 3 * 2),
+    def settings(self, job: Job, i: int | None = None) -> str | None:
+        return None
+
+    def report(
+        self,
+        job: Job | int | None = None,
+        i: int | None = None,
+        *,
+        entry: Literal["source", "settings", "input", "output"] = "output",
+    ) -> rich.table.Table:
+        table = rich.table.Table(box=rich.box.ROUNDED)
+        table.add_column("", justify="right", no_wrap=True, min_width=2)
+        table.add_column("Job", justify="left", no_wrap=True)
+        table.add_column("State", justify="left", no_wrap=True)
+
+        hl = StateHighlighter()
+
+        if job is None:
+            for job, i in self.order.items():  # noqa: PLR1704
+                table.add_row(str(i), str(job), hl(self.state(job)))
+        else:
+            table.add_column(entry.capitalize(), justify="left", no_wrap=False)
+
+            if entry == "source":
+                getter = lambda job, i: rich.syntax.Syntax(
+                    getattr(job if i is None else job[i], "source", ""),
+                    lexer="python",
+                    theme=ANSITheme(),
+                    dedent=True,
                 )
-                for repr, state, output in rows
-            ]
+            elif entry == "settings":
+                getter = self.settings
+            elif entry == "input":
+                getter = lambda job, i: rich.syntax.Syntax(
+                    repr(job if i is None else job[i]),
+                    lexer="python",
+                    theme=ANSITheme(),
+                )
+            elif entry == "output":
+                getter = self.output
+            else:
+                raise NotImplementedError(f"Unknown entry '{entry}'.")
 
-            return tabulate(rows, headers, showindex=index, maxcolwidths=[None, 48, 16, None])
+            if isinstance(job, int):
+                job = list(self.order)[job]
 
-    def cancel(self, job: Job | None = None, i: int | None = None) -> str:
-        raise NotImplementedError(f"'cancel' is not implemented for the {self.backend} backend.")
+            if isinstance(job, JobArray):
+                if i is None:
+                    indices = range(len(job))
+                else:
+                    indices = [i % len(job)]
+
+                for j in indices:
+                    table.add_row(str(j), str(job[j]), hl(self.state(job, j)), getter(job, j))
+                    table.add_section()
+            else:
+                table.add_row(
+                    str(self.order[job]), str(job), hl(self.state(job)), getter(job, None)
+                )
+
+        return table
+
+    def cancel(self, job: Job | int | None = None, i: int | None = None) -> str:
+        raise NotImplementedError(f"'cancel' is not implemented for the '{self.backend}' backend.")
 
     @contextmanager
     def context(self) -> Iterator[None]:
@@ -178,9 +247,11 @@ class Scheduler(ABC):
             if job.satisfy_status == "ready":
                 asyncio.ensure_future(self.satisfy(job))
             elif job.satisfy_status == "wait":
-                await self.satisfy(job)
+                result = await future(self.satisfy(job), return_exceptions=True)
+                if isinstance(result, Exception):
+                    return result
             elif job.satisfy_status == "never":
-                raise DependencyNeverSatisfiedError(str(job))
+                raise DependencyNeverSatisfiedError(repr(job))
             else:
                 raise ValueError(f"Unknown status '{job.satisfy_status}'.")
         finally:
@@ -206,7 +277,7 @@ class AsyncScheduler(Scheduler):
 
     backend: str = "async"
 
-    def __init__(self, name: str | None = None, pools: int | None = None) -> None:
+    def __init__(self, name: str, pools: int | None = None) -> None:
         r"""
         Arguments:
             name: The name of the workflow.
@@ -244,11 +315,11 @@ class AsyncScheduler(Scheduler):
                 if isinstance(result, JobFailedError) and status != "success":
                     result = None
                 elif not isinstance(result, JobFailedError) and status == "failure":
-                    result = JobNotFailedError(str(job))
+                    result = JobNotFailedError(repr(job))
 
                 if isinstance(result, Exception):
                     if job.wait_mode == "all":
-                        raise DependencyNeverSatisfiedError(str(job)) from result
+                        raise DependencyNeverSatisfiedError(repr(job)) from result
                 elif job.wait_mode == "any":
                     break
             else:
@@ -256,7 +327,7 @@ class AsyncScheduler(Scheduler):
             break
         else:
             if job.wait_mode == "any":
-                raise DependencyNeverSatisfiedError(str(job))
+                raise DependencyNeverSatisfiedError(repr(job))
 
     async def exec(self, job: Job) -> Any:
         loop = asyncio.get_running_loop()
@@ -278,7 +349,7 @@ class AsyncScheduler(Scheduler):
             else:
                 return await loop.run_in_executor(self.executor, runpickle, job.exe)
         except Exception as e:
-            raise JobFailedError(str(job)) from e
+            raise JobFailedError(repr(job)) from e
 
 
 class DummyScheduler(AsyncScheduler):
@@ -291,9 +362,9 @@ class DummyScheduler(AsyncScheduler):
     backend: str = "dummy"
 
     async def exec(self, job: Job) -> None:
-        print(f"START {job}")
+        print(f"START {job!r}")
         await asyncio.sleep(random.random())
-        print(f"END   {job}")
+        print(f"END   {job!r}")
 
 
 class SlurmScheduler(Scheduler):
@@ -320,7 +391,7 @@ class SlurmScheduler(Scheduler):
         "timeout": "time",
     }
 
-    def __init__(self, name: str | None = None) -> None:
+    def __init__(self, name: str) -> None:
         r"""
         Arguments:
             name: The name of the workflow.
@@ -365,33 +436,55 @@ class SlurmScheduler(Scheduler):
 
         if logfile.exists():
             with open(logfile, newline="", errors="replace") as f:
-                return f.read()
+                return cat(f.read(), -1).strip("\n")
         else:
             return None
 
-    def report(self, job: Job | None = None, i: int | None = None) -> str:
-        if job is None:
-            headers = ("Job", "ID", "State")
-            rows = []
+    def settings(self, job: Job, i: int | None = None) -> rich.syntax.Syntax | None:
+        tag = self.tag(job)
+        shfile = self.path / f"{tag}.sh"
 
-            for job in self.order:
+        if shfile.exists():
+            return rich.syntax.Syntax(
+                shfile.read_text(encoding="utf-8").strip("\n"),
+                lexer="sh",
+                theme=ANSITheme(),
+            )
+        else:
+            return None
+
+    def report(
+        self, job: Job | int | None = None, i: int | None = None, **kwargs
+    ) -> rich.table.Table:
+        if job is None:
+            table = rich.table.Table(box=rich.box.ROUNDED)
+            table.add_column("", justify="right", no_wrap=True, min_width=2)
+            table.add_column("Job", justify="left", no_wrap=True)
+            table.add_column("State", justify="left", no_wrap=True)
+            table.add_column("ID", justify="right", no_wrap=True)
+
+            hl = StateHighlighter()
+
+            for job, i in self.order.items():  # noqa: PLR1704
                 if job in self.traces:
                     jobid = None
                 else:
                     jobid = self.results[job]
 
-                rows.append((str(job), jobid, self.state(job)))
-
-            return tabulate(rows, headers, showindex=True, maxcolwidths=[None, 48, 16, 16])
+                table.add_row(str(i), str(job), hl(self.state(job)), jobid)
         else:
-            return super().report(job, i)
+            table = super().report(job, i, **kwargs)
 
-    def cancel(self, job: Job | None = None, i: int | None = None) -> str:
+        return table
+
+    def cancel(self, job: Job | int | None = None, i: int | None = None) -> str:
         if job is None:
             jobids = list(self.results.values())
         else:
+            if isinstance(job, int):
+                job = list(self.order)[job]
             jobid = self.results[job]
-            if i is not None:  # fails if job is not array
+            if i is not None:  # noop if job is not array
                 jobid = f"{jobid}_{i}"
             jobids = [jobid]
 
@@ -407,7 +500,7 @@ class SlurmScheduler(Scheduler):
 
         for result in results:
             if isinstance(result, Exception):
-                raise DependencyNeverSatisfiedError(str(job)) from result
+                raise DependencyNeverSatisfiedError(repr(job)) from result
 
     async def exec(self, job: Job) -> str:
         tag = self.tag(job)
@@ -487,6 +580,7 @@ class SlurmScheduler(Scheduler):
                         "i = os.environ['SLURM_ARRAY_TASK_ID']",
                         f"with open('{pklfile}', mode='rb') as f:",
                         "    pickle.loads(bytes_load(f, int(i)))()",
+                        "",
                     ])
                 )
         else:
@@ -500,6 +594,7 @@ class SlurmScheduler(Scheduler):
                         "import pickle",
                         f"with open('{pklfile}', mode='rb') as f:",
                         "    pickle.load(f)()",
+                        "",
                     ])
                 )
 
@@ -526,7 +621,7 @@ class SlurmScheduler(Scheduler):
             if isinstance(e, subprocess.CalledProcessError):
                 e = subprocess.SubprocessError(e.stderr.strip("\n"))
 
-            raise JobSubmissionError(str(job)) from e
+            raise JobSubmissionError(repr(job)) from e
 
 
 class CyclicDependencyGraphError(Exception):

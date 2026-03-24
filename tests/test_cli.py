@@ -70,9 +70,9 @@ def test_main_workflow(
     monkeypatch.setattr(sys, "argv", ["dawgz", "0"])
     main()
     out = capsys.readouterr().out
-    assert "noop()" in out
+    assert "noop" in out
     assert "COMPLETED" in out
-    assert "failing('a', kwarg='k')" in out
+    assert "failing" in out
     assert "FAILED" in out
 
 
@@ -82,7 +82,7 @@ def test_main_job(
     monkeypatch.setattr(sys, "argv", ["dawgz", "-1", "0"])
     main()
     out = capsys.readouterr().out
-    assert "noop()" in out
+    assert "noop" in out
     assert "COMPLETED" in out
     assert "42" in out
 
@@ -93,9 +93,31 @@ def test_main_job_failing(
     monkeypatch.setattr(sys, "argv", ["dawgz", "-1", "-1"])
     main()
     out = capsys.readouterr().out
-    assert "failing('a', kwarg='k')" in out
+    assert "failing" in out
     assert "FAILED" in out
     assert "RuntimeError" in out
+
+
+def test_main_job_source(
+    dummy_workflow: dawgz.Scheduler, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["dawgz", "-1", "1", "--source"])
+    main()
+    out = capsys.readouterr().out
+    assert "failing" in out
+    assert "FAILED" in out
+    assert "def failing" in out
+
+
+def test_main_job_input(
+    dummy_workflow: dawgz.Scheduler, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["dawgz", "-1", "1", "--input"])
+    main()
+    out = capsys.readouterr().out
+    assert "failing" in out
+    assert "FAILED" in out
+    assert "failing('a', kwarg='k')" in out
 
 
 def test_main_invalid_workflow_index(

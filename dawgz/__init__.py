@@ -2,10 +2,17 @@ r"""Directed Acyclic Workflow Graph Scheduling"""
 
 __version__ = "2.4.0"
 
+import os
+import rich.box
+import rich.console
+import rich.table
+import shutil
+
 from collections.abc import Callable
 from functools import partial, wraps
-from tabulate import tabulate
 from typing import Any, Literal, ParamSpec, overload
+
+import __main__
 
 from .constants import get_dawgz_dir, set_dawgz_dir  # noqa: F401
 from .schedulers import (
@@ -14,7 +21,6 @@ from .schedulers import (
     Scheduler,
     SlurmScheduler,
 )
-from .utils import eprint
 from .workflow import Job, JobArray
 
 P = ParamSpec("P")
@@ -104,6 +110,7 @@ def array(*jobs: Job, throttle: int | None = None) -> JobArray:
 def schedule(
     *jobs: Job,
     backend: Literal["async", "dummy", "slurm"],
+    name: str | None = None,
     quiet: bool = False,
     **kwargs,
 ) -> Scheduler:
@@ -118,6 +125,7 @@ def schedule(
     Arguments:
         jobs: A group of jobs describing a workflow.
         backend: The scheduling backend.
+        name: The worflow name. If `None`, use the caller's filename instead.
         quiet: Whether to display eventual job errors or not.
         kwargs: Keyword arguments passed to the scheduler's constructor.
 
@@ -134,11 +142,29 @@ def schedule(
         )
     }
 
-    scheduler = backends[backend](**kwargs)
+    if name is None:
+        name = os.path.basename(__main__.__file__)
+
+    scheduler = backends[backend](name=name, **kwargs)
     scheduler(*jobs)
     scheduler.dump()
 
     if scheduler.traces and not quiet:
-        eprint(tabulate(scheduler.traces.items(), ("Job", "Error"), showindex=True))
+        table = rich.table.Table(box=rich.box.ROUNDED)
+        table.add_column("", justify="right", no_wrap=True, min_width=2)
+        table.add_column("Job", justify="left", no_wrap=True)
+        table.add_column("Error", justify="left", no_wrap=False)
+
+        for job, trace in scheduler.traces.items():
+            table.add_row(str(scheduler.order[job]), str(job), trace)
+            table.add_section()
+
+        try:
+            rich.console.Console(
+                stderr=True,
+                width=shutil.get_terminal_size((1_000_000, 0)).columns,
+            ).print(table)
+        except BrokenPipeError:
+            pass
 
     return scheduler

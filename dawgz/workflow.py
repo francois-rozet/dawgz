@@ -2,6 +2,8 @@ r"""Workflow graph components"""
 
 from __future__ import annotations
 
+import inspect
+
 from collections.abc import Callable, Iterator, Sequence
 from functools import partial
 from rich.pretty import pretty_repr
@@ -59,7 +61,7 @@ class Job(Node):
         else:
             self.exe = pickle.dumps(partial(fun, *args, **kwargs))
 
-        # String repr
+        # Name
         if name is None:
             name = getattr(fun, "__name__", None)
 
@@ -67,17 +69,19 @@ class Job(Node):
             f"function name can only contain underscore and alphanumeric characters, got '{name}'"
         )
 
-        def prepr(x: object) -> str:
-            return pretty_repr(
-                x,
-                indent_size=2,
-                max_depth=2,
-                max_width=48,
-                max_string=24,
-            ).strip("\n")
-
         self.name = name
+
+        # Input
+        def prepr(x: object) -> str:
+            return pretty_repr(x, indent_size=2, max_width=88).strip("\n")
+
         self.args_repr = [prepr(a) for a in args] + [f"{k}=" + prepr(v) for k, v in kwargs.items()]
+
+        # Source
+        try:
+            self.source = inspect.getsource(fun).strip("\n")
+        except TypeError:
+            self.source = ""
 
         # Settings
         self.shell = shell
@@ -96,10 +100,13 @@ class Job(Node):
     def __repr__(self) -> str:
         prepr = f"{self.name}(" + ", ".join(self.args_repr) + ")"
 
-        if "\n" in prepr or len(prepr) > 48:
+        if "\n" in prepr or len(prepr) > 88:
             prepr = f"{self.name}(\n" + indent(",\n".join(self.args_repr), "  ") + "\n)"
 
         return prepr
+
+    def __str__(self) -> str:
+        return self.name
 
     def __getstate__(self) -> dict:
         state = self.__dict__.copy()
@@ -150,12 +157,9 @@ class Job(Node):
     def satisfy_status(self) -> Literal["ready", "never", "wait"]:
         if self.wait_mode == "all" and self.unsatisfied:
             return "never"
-        elif (
-            self.wait_mode == "all"
-            and not self.dependencies
-            or self.wait_mode == "any"
-            and self.satisfied
-        ):
+        elif self.wait_mode == "all" and not self.dependencies:  # noqa: SIM114
+            return "ready"
+        elif self.wait_mode == "any" and self.satisfied:
             return "ready"
         elif self.wait_mode == "any" and not self.dependencies:
             return "never"
@@ -196,6 +200,9 @@ class JobArray(Job):
         return self.array[i]
 
     def __repr__(self) -> str:
+        return str(self)
+
+    def __str__(self) -> str:
         if self.throttle is None:
             range = f"0-{len(self) - 1}"
         else:

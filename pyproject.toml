@@ -19,7 +19,6 @@ classifiers = [
 dependencies = [
   "cloudpickle>=2.0.0",
   "rich>=13.8.0",
-  "tabulate>=0.8.0",
   "wonderwords>=3.0.0",
 ]
 dynamic = ["version"]

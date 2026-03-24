@@ -25,12 +25,6 @@ def redirect_dawgz_dir(tmp_path: Path) -> None:
 
 
 @pytest.fixture(autouse=True)
-def mock_shutil_which() -> Generator[MagicMock]:
-    with patch("shutil.which", return_value="/usr/bin/sbatch") as m:
-        yield m
-
-
-@pytest.fixture(autouse=True)
 def squeue() -> dict[str, str]:
     return {}
 
@@ -251,7 +245,7 @@ def test_single_job() -> None:
 
     sbatch(shfile)
 
-    assert scheduler.output(job) == "hello_world\n"
+    assert scheduler.output(job) == "hello_world"
 
 
 def test_job_array() -> None:
@@ -276,7 +270,7 @@ def test_job_array() -> None:
     sbatch(shfile)
 
     for i, x in enumerate(xs):
-        assert scheduler.output(array, i) == f"{x}\n"
+        assert scheduler.output(array, i) == f"{x}"
 
 
 def test_cancel(squeue: dict) -> None:

@@ -30,4 +30,4 @@ if __name__ == "__main__":
     generate_jobs = [generate(i) for i in range(5)]
     estimate_job = estimate().after(*generate_jobs)
 
-    dawgz.schedule(estimate_job, name="pi.py", backend="async")
+    dawgz.schedule(estimate_job, backend="async")
