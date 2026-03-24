@@ -160,7 +160,7 @@ def test_shfile() -> None:
         },
     )()
 
-    scheduler = dawgz.schedule(job, backend="slurm", quiet=True)
+    scheduler = dawgz.schedule(job, backend="slurm")
 
     tag = scheduler.tag(job)
     shfile = scheduler.path / f"{tag}.sh"
@@ -199,7 +199,7 @@ def test_dependencies(wait_mode: str, status: str) -> None:
     b_job = f()
     c_job = f().after(a_job, b_job, status=status).waitfor(wait_mode)
 
-    scheduler = dawgz.schedule(c_job, backend="slurm", quiet=True)
+    scheduler = dawgz.schedule(c_job, backend="slurm")
 
     a_jobid = scheduler.results[a_job]
     b_jobid = scheduler.results[b_job]
@@ -228,7 +228,7 @@ def test_dependency_submission_failure() -> None:
         return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
     with patch("subprocess.run", side_effect=failing_sbatch):
-        scheduler = dawgz.schedule(b_job, backend="slurm", quiet=True)
+        scheduler = dawgz.schedule(b_job, backend="slurm")
 
     assert "JobSubmissionError" in scheduler.traces[a_job]
     assert "DependencyNeverSatisfiedError" in scheduler.traces[b_job]
@@ -244,7 +244,7 @@ def test_single_job() -> None:
         env=["export DAWGZ_TEST_VAR=hello_world"],
     )()
 
-    scheduler = dawgz.schedule(job, backend="slurm", quiet=True)
+    scheduler = dawgz.schedule(job, backend="slurm")
 
     tag = scheduler.tag(job)
     shfile = scheduler.path / f"{tag}.sh"
@@ -268,7 +268,7 @@ def test_job_array() -> None:
     ]
     array = dawgz.array(*jobs)
 
-    scheduler = dawgz.schedule(array, backend="slurm", quiet=True)
+    scheduler = dawgz.schedule(array, backend="slurm")
 
     tag = scheduler.tag(array)
     shfile = scheduler.path / f"{tag}.sh"
@@ -286,7 +286,7 @@ def test_cancel(squeue: dict) -> None:
 
     job = f()
 
-    scheduler = dawgz.schedule(job, backend="slurm", quiet=True)
+    scheduler = dawgz.schedule(job, backend="slurm")
     assert scheduler.state(job) == "PENDING"
 
     SlurmScheduler.sacct.cache_clear()

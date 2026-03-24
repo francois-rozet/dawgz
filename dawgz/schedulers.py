@@ -19,7 +19,16 @@ from tabulate import tabulate
 from typing import Any
 
 from .constants import get_dawgz_dir
-from .utils import cat, future, human_uuid, pickle, runpickle, slugify, trace
+from .utils import (
+    bytes_dump,
+    cat,
+    future,
+    human_uuid,
+    pickle,
+    runpickle,
+    slugify,
+    trace,
+)
 from .workflow import Job, JobArray, cycles, prune
 
 
@@ -51,7 +60,7 @@ class Scheduler(ABC):
         self.traces = {}
 
     def dump(self) -> None:
-        with open(self.path / "dump.pkl", "wb") as f:
+        with open(self.path / "dump.pkl", mode="wb") as f:
             pickle.dump(self, f)
 
         with open(self.path.parent / "workflows.csv", mode="a", newline="") as f:
@@ -463,11 +472,10 @@ class SlurmScheduler(Scheduler):
 
         ## Pickle job
         if isinstance(job, JobArray):
-            pklfile = str(pklfile).replace(".pkl", "_{}.pkl")
+            pklfile = str(pklfile).replace(".pkl", ".pkls")
 
-            for i in range(len(job)):
-                with open(pklfile.format(i), mode="wb") as f:
-                    f.write(job[i].exe)
+            with open(pklfile, mode="wb") as f:
+                bytes_dump(f, [job[i].exe for i in range(len(job))])
 
             with open(pyfile, mode="w") as f:
                 f.write(
@@ -475,9 +483,10 @@ class SlurmScheduler(Scheduler):
                         "#!/usr/bin/env python",
                         "import os",
                         "import pickle",
+                        "from dawgz.utils import bytes_load",
                         "i = os.environ['SLURM_ARRAY_TASK_ID']",
-                        f"with open('{pklfile}'.format(i), 'rb') as f:",
-                        "    pickle.load(f)()",
+                        f"with open('{pklfile}', mode='rb') as f:",
+                        "    pickle.loads(bytes_load(f, int(i)))()",
                     ])
                 )
         else:
@@ -489,7 +498,7 @@ class SlurmScheduler(Scheduler):
                     "\n".join([
                         "#!/usr/bin/env python",
                         "import pickle",
-                        f"with open('{pklfile}', 'rb') as f:",
+                        f"with open('{pklfile}', mode='rb') as f:",
                         "    pickle.load(f)()",
                     ])
                 )

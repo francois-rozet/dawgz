@@ -3,13 +3,60 @@ r"""Miscellaneous helpers"""
 import asyncio
 import cloudpickle as pickle
 import inspect
+import mmap
 import re
+import struct
 import sys
 import traceback
 import uuid
 
-from typing import Any
+from typing import IO, Any, overload
 from wonderwords import RandomWord
+
+BYTES_HEADER = b"BYTES_LIST"
+BYTES_U64 = struct.Struct("<Q")
+
+
+def bytes_dump(file: IO[bytes], items: list[bytes]) -> None:
+    r"""Writes a list of bytes to a file."""
+
+    file.write(BYTES_HEADER)
+    file.write(BYTES_U64.pack(len(items)))
+    file.write(b"".join(map(BYTES_U64.pack, map(len, items))))
+    file.write(b"".join(items))
+
+
+@overload
+def bytes_load(file: IO[bytes], i: int) -> bytes: ...
+
+
+@overload
+def bytes_load(file: IO[bytes], i: None) -> list[bytes]: ...
+
+
+def bytes_load(file: IO[bytes], i: int | None = None) -> bytes | list[bytes]:
+    r"""Reads a bytes list from disk."""
+
+    with mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ) as buffer:
+        offset = len(BYTES_HEADER)
+
+        if buffer[:offset] != BYTES_HEADER:
+            raise ValueError("Unknown file format.")
+
+        length = BYTES_U64.unpack_from(buffer, offset)[0]
+        offset += BYTES_U64.size
+
+        sizes = [None] * length
+        for j in range(length):
+            sizes[j] = BYTES_U64.unpack_from(buffer, offset)[0]
+            offset += BYTES_U64.size
+
+        offsets = [offset + sum(sizes[:j]) for j in range(length)]
+
+        if i is None:
+            return [buffer[offsets[j] : offsets[j] + sizes[j]] for j in range(length)]
+        else:
+            return buffer[offsets[i] : offsets[i] + sizes[i]]
 
 
 def cat(text: str, width: int) -> str:
