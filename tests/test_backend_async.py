@@ -125,8 +125,8 @@ def test_diamond(pools: int | None) -> None:
 
 
 def test_cyclic_dependency(pools: int | None) -> None:
-    a_job = identity(None)
-    b_job = identity(None)
+    a_job = identity("a")
+    b_job = identity("b")
     a_job.after(b_job)
     b_job.after(a_job)
     with pytest.raises(CyclicDependencyGraphError):
@@ -135,10 +135,12 @@ def test_cyclic_dependency(pools: int | None) -> None:
 
 def test_blocked_by_failed_dep(pools: int | None) -> None:
     a_job = fail()
-    b_job = identity(None).after(a_job)
+    b_job = identity("b").after(a_job)
     scheduler = dawgz.schedule(b_job, backend="async", pools=pools)
     assert "RuntimeError" in scheduler.traces[a_job]
     assert "DependencyNeverSatisfiedError" in scheduler.traces[b_job]
+    assert scheduler.state(a_job) == "FAILED"
+    assert scheduler.state(b_job) == "CANCELLED"
 
 
 def test_triggered_by_failed_dep(pools: int | None) -> None:
@@ -147,6 +149,8 @@ def test_triggered_by_failed_dep(pools: int | None) -> None:
     scheduler = dawgz.schedule(b_job, backend="async", pools=pools)
     assert "RuntimeError" in scheduler.traces[a_job]
     assert scheduler.results[b_job] == "b"
+    assert scheduler.state(a_job) == "FAILED"
+    assert scheduler.state(b_job) == "COMPLETED"
 
 
 def test_waitfor_any_one_succeeds(pools: int | None) -> None:

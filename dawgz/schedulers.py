@@ -43,6 +43,8 @@ class StateHighlighter(rich.highlighter.Highlighter):
                 text.stylize("red", i, j)
             elif state == "CANCELLED":
                 text.stylize("dark_orange", i, j)
+            elif state == "UNKNOWN":
+                text.stylize("magenta", i, j)
             else:
                 pass
 
@@ -111,9 +113,14 @@ class Scheduler(ABC):
 
     def state(self, job: Job, i: int | None = None) -> str:
         if job in self.traces:
-            return "FAILED"
-        else:
+            if "DependencyNeverSatisfiedError" in self.traces[job]:
+                return "CANCELLED"
+            else:
+                return "FAILED"
+        elif job in self.results:
             return "COMPLETED"
+        else:
+            return "UNKNOWN"
 
     def output(self, job: Job, i: int | None = None) -> str | None:
         if job in self.traces:
@@ -402,7 +409,7 @@ class SlurmScheduler(Scheduler):
 
         return dict(line.split("|") for line in text.splitlines())
 
-    def state(self, job: Job, i: int | None = None) -> str | None:
+    def state(self, job: Job, i: int | None = None) -> str:
         if job in self.traces:
             return "CANCELLED"
 
@@ -413,9 +420,9 @@ class SlurmScheduler(Scheduler):
             if i is None:
                 return ", ".join(sorted(set(table.values())))
             else:
-                return table.get(f"{jobid}_{i}", None)
+                return table.get(f"{jobid}_{i}", "PENDING")
         else:
-            return table.get(jobid, None)
+            return table.get(jobid, "UNKNOWN")
 
     def output(self, job: Job, i: int | None = None) -> str | None:
         tag = self.tag(job)
