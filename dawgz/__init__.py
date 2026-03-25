@@ -1,6 +1,6 @@
 r"""Directed Acyclic Workflow Graph Scheduling"""
 
-__version__ = "2.5.0"
+__version__ = "2.5.1"
 
 import os
 import rich.box
