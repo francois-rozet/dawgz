@@ -57,9 +57,9 @@ class Job(Node):
         super().__init__()
 
         if fun is None:
-            self.exe = None
+            self.pkl = None
         else:
-            self.exe = pickle.dumps(partial(fun, *args, **kwargs))
+            self.pkl = pickle.dumps(partial(fun, *args, **kwargs))
 
         # Name
         if name is None:
@@ -110,7 +110,7 @@ class Job(Node):
 
     def __getstate__(self) -> dict:
         state = self.__dict__.copy()
-        state.pop("exe", None)
+        state.pop("pkl", None)
         return state
 
     def mark(self, status: Literal["success", "failure", "cancelled", "pending"]) -> Job:

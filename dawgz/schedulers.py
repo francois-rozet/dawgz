@@ -24,16 +24,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from .constants import get_dawgz_dir
-from .utils import (
-    bytes_dump,
-    cat,
-    future,
-    human_uuid,
-    pickle,
-    runpickle,
-    slugify,
-    trace,
-)
+from .utils import cat, future, human_uuid, pickle, runpickle, slugify, trace
 from .workflow import Job, JobArray, cycles, prune
 
 
@@ -92,7 +83,7 @@ class Scheduler(ABC):
         self.traces: dict[Job, str] = {}
 
     def dump(self) -> None:
-        with open(self.path / "dump.pkl", mode="wb") as f:
+        with open(self.path / "dump.pkl", "wb") as f:
             pickle.dump(self, f)
 
         with open(self.path.parent / "workflows.csv", mode="a", newline="") as f:
@@ -335,7 +326,7 @@ class AsyncScheduler(Scheduler):
         try:
             if isinstance(job, JobArray):
                 futures = [
-                    loop.run_in_executor(self.executor, runpickle, job[i].exe)
+                    loop.run_in_executor(self.executor, runpickle, job[i].pkl)
                     for i in range(len(job))
                 ]
 
@@ -347,7 +338,7 @@ class AsyncScheduler(Scheduler):
 
                 return results
             else:
-                return await loop.run_in_executor(self.executor, runpickle, job.exe)
+                return await loop.run_in_executor(self.executor, runpickle, job.pkl)
         except Exception as e:
             raise JobFailedError(repr(job)) from e
 
@@ -503,6 +494,8 @@ class SlurmScheduler(Scheduler):
                 raise DependencyNeverSatisfiedError(repr(job)) from result
 
     async def exec(self, job: Job) -> str:
+        loop = asyncio.get_event_loop()
+
         tag = self.tag(job)
         logfile = self.path / (f"{tag}_%a.log" if isinstance(job, JobArray) else f"{tag}.log")
         pklfile = self.path / f"{tag}.pkl"
@@ -563,47 +556,42 @@ class SlurmScheduler(Scheduler):
             lines.extend(job.env)
             lines.append("")
 
-        ## Pickle job
-        if isinstance(job, JobArray):
-            pklfile = str(pklfile).replace(".pkl", ".pkls")
-
-            with open(pklfile, mode="wb") as f:
-                bytes_dump(f, [job[i].exe for i in range(len(job))])
-
-            with open(pyfile, mode="w") as f:
-                f.write(
-                    "\n".join([
-                        "#!/usr/bin/env python",
-                        "import os",
-                        "import pickle",
-                        "from dawgz.utils import bytes_load",
-                        "i = os.environ['SLURM_ARRAY_TASK_ID']",
-                        f"with open('{pklfile}', mode='rb') as f:",
-                        "    pickle.loads(bytes_load(f, int(i)))()",
-                        "",
-                    ])
-                )
-        else:
-            with open(pklfile, mode="wb") as f:
-                f.write(job.exe)
-
-            with open(pyfile, mode="w") as f:
-                f.write(
-                    "\n".join([
-                        "#!/usr/bin/env python",
-                        "import pickle",
-                        f"with open('{pklfile}', mode='rb') as f:",
-                        "    pickle.load(f)()",
-                        "",
-                    ])
-                )
-
+        ## Interpreter
         lines.append(f"srun {job.interpreter} {pyfile}")
         lines.append("")
 
-        ## Save
-        with open(shfile, mode="w") as f:
-            f.write("\n".join(lines))
+        await loop.run_in_executor(None, shfile.write_text, "\n".join(lines))
+
+        # Pickle files
+        if isinstance(job, JobArray):
+            pklfile = str(pklfile).replace(".pkl", "_{}.pkl")
+
+            await asyncio.wait(
+                loop.run_in_executor(None, Path(pklfile.format(i)).write_bytes, job[i].pkl)
+                for i in range(len(job))
+            )
+
+            pycode = [
+                "#!/usr/bin/env python",
+                "import os",
+                "import pickle",
+                "i = os.environ['SLURM_ARRAY_TASK_ID']",
+                f"with open('{pklfile}'.format(i), 'rb') as f:",
+                "    pickle.load(f)()",
+                "",
+            ]
+        else:
+            await loop.run_in_executor(None, pklfile.write_bytes, job.pkl)
+
+            pycode = [
+                "#!/usr/bin/env python",
+                "import pickle",
+                f"with open('{pklfile}', 'rb') as f:",
+                "    pickle.load(f)()",
+                "",
+            ]
+
+        await loop.run_in_executor(None, pyfile.write_text, "\n".join(pycode))
 
         # Submit script
         try:
