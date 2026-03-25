@@ -49,17 +49,17 @@ if __name__ == "__main__":
     generate_jobs = [generate(i) for i in range(5)]
     estimate_job = estimate().after(*generate_jobs)
 
-    dawgz.schedule(estimate_job, name="pi.py", backend="async")
+    dawgz.schedule(estimate_job, backend="async")
 ```
 
 ```
 $ python examples/pi.py
-Task 1 / 5
-Task 2 / 5
-Task 3 / 5
-Task 4 / 5
-Task 5 / 5
-π ≈ 3.141865
+Task 1
+Task 2
+Task 3
+Task 4
+Task 5
+π ≈ 3.14936
 ```
 
 Alternatively, on a Slurm HPC cluster, changing the backend to `"slurm"` results in the following job queue.
@@ -80,23 +80,49 @@ In addition to the Python interface, `dawgz` provides a simple command-line inte
 
 ```
 $ dawgz
-    Name    ID                        Date                 Backend      Jobs    Errors
---  ------  ------------------------  -------------------  ---------  ------  --------
- 0  pi.py   handsome_jicama_bfc5a3e4  2022-02-28 16:37:58  async           2         0
- 1  pi.py   crowded_machine_23bdd047  2022-02-28 16:38:33  slurm           2         0
+╭────┬───────┬──────────────────────────┬─────────────────────┬─────────┬──────┬────────╮
+│    │ Name  │ ID                       │ Date                │ Backend │ Jobs │ Errors │
+├────┼───────┼──────────────────────────┼─────────────────────┼─────────┼──────┼────────┤
+│  0 │ pi.py │ handsome_jicama_bfc5a3e4 │ 2022-02-28 16:37:58 │ async   │    6 │      0 │
+│  1 │ pi.py │ crowded_machine_23bdd047 │ 2022-02-28 16:38:33 │ slurm   │    6 │      0 │
+╰────┴───────┴──────────────────────────┴─────────────────────┴─────────┴──────┴────────╯
 $ dawgz 1
-    Job               ID  State
---  -----------  -------  ---------
- 0  generate(0)  1868838  COMPLETED
- 1  generate(1)  1868829  RUNNING
- 2  generate(2)  1868830  RUNNING
- 3  generate(3)  1868831  PENDING
- 4  generate(4)  1868832  PENDING
- 5  estimate()   1868833  PENDING
-$ dawgz 1 0
-    Job          State      Output
---  -----------  ---------  ----------
- 0  generate(0)  COMPLETED  Task 1 / 5
+╭────┬──────────┬───────────┬─────────╮
+│    │ Job      │ State     │ ID      |
+├────┼──────────┼───────────┼─────────┤
+│  0 │ generate │ COMPLETED │ 1868828 |
+│  1 │ generate │ RUNNING   │ 1868829 |
+│  2 │ generate │ RUNNING   │ 1868830 |
+│  3 │ generate │ PENDING   │ 1868831 |
+│  4 │ generate │ PENDING   │ 1868832 |
+│  5 │ estimate │ PENDING   │ 1868833 |
+╰────┴──────────┴───────────┴─────────╯
+$ dawgz 1 2
+╭────┬──────────┬───────────┬────────╮
+│    │ Job      │ State     │ Output │
+├────┼──────────┼───────────┼────────┤
+│  2 │ generate │ COMPLETED │ Task 3 │
+╰────┴──────────┴───────────┴────────╯
+$ dawgz 1 2 --input
+╭────┬──────────┬───────────┬─────────────╮
+│    │ Job      │ State     │ Input       │
+├────┼──────────┼───────────┼─────────────┤
+│  2 │ generate │ COMPLETED │ generate(2) │
+╰────┴──────────┴───────────┴─────────────╯
+$ dawgz 1 2 --source
+╭────┬──────────┬───────────┬────────────────────────────────────────────╮
+│    │ Job      │ State     │ Source                                     │
+├────┼──────────┼───────────┼────────────────────────────────────────────┤
+│  2 │ generate │ COMPLETED │ @dawgz.job(cpus=1, ram="2GB", time="5:00") │
+│    │          │           │ def generate(i: int) -> None:              │
+│    │          │           │     print(f"Task {i + 1}")                 │
+│    │          │           │                                            │
+│    │          │           │     x = np.random.random(10000)            │
+│    │          │           │     y = np.random.random(10000)            │
+│    │          │           │     within_circle = x**2 + y**2 <= 1       │
+│    │          │           │                                            │
+│    │          │           │     np.save(f"pi_{i}.npy", within_circle)  │
+╰────┴──────────┴───────────┴────────────────────────────────────────────╯
 ```
 
 ## Interface

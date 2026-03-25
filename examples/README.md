@@ -10,9 +10,10 @@ In [`simple.py`](simple.py) we define a workflow composed of 5 jobs. In summary,
 * `d` waits for all `c(i)` to complete.
 * `e` waits for `'any'` of its dependencies (either `a` or `d`) to complete.
 
-The workflow graph of `e` is scheduled and submitted by `schedule`, while pruning the jobs that have completed. We get the following ouput, where we notice that `e` finishes before `a` and despite its failure, reported in the error table.
+The workflow graph of `e` is scheduled and submitted by `dawgz.schedule`, while pruning the jobs that have completed. We get the following ouput, where we notice that `e` finishes before `a`, despite its failure, reported in the error table.
 
 ```
+$ python examples/simple.py
 a
 b
 b
@@ -20,25 +21,27 @@ c42
 d
 e
 a
-    Job    Error
---  -----  -------------------------------------------------------------------------------------------------------
- 0  a()    Traceback (most recent call last):
-             File "/home/francois/.venvs/dawgz/lib/python3.13/site-packages/dawgz/schedulers.py", line 289, in exec
-               return await loop.run_in_executor(self.executor, runpickle, job.exe)
-                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-             File "/home/francois/.venvs/dawgz/lib/python3.13/site-packages/dawgz/utils.py", line 71, in runpickle
-               return pickle.loads(f)(*args, **kwargs)
-                      ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-             File "/Users/frozet/Documents/Git/dawgz/examples/simple.py", line 13, in a
-               raise Exception()
-           Exception
-
-           The above exception was the direct cause of the following exception:
-
-           Traceback (most recent call last):
-             File "/home/francois/.venvs/dawgz/lib/python3.13/site-packages/dawgz/schedulers.py", line 291, in exec
-               raise JobFailedError(str(job)) from e
-           dawgz.schedulers.JobFailedError: a()
+╭────┬─────┬──────────────────────────────────────────────────────────────────────────────────╮
+│    │ Job │ Error                                                                            │
+├────┼─────┼──────────────────────────────────────────────────────────────────────────────────┤
+│  0 │ a   │ Traceback (most recent call last):                                               │
+│    │     │   File ".../dawgz/schedulers.py", line 350, in exec                              │
+│    │     │     return await loop.run_in_executor(self.executor, runpickle, job.exe)         │
+│    │     │            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^         │
+│    │     │   File ".../dawgz/utils.py", line 140, in runpickle                              │
+│    │     │     return pickle.loads(f)(*args, **kwargs)                                      │
+│    │     │            ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^                                      │
+│    │     │   File ".../dawgz/examples/simple.py", line 13, in a                             │
+│    │     │     raise Exception()                                                            │
+│    │     │ Exception                                                                        │
+│    │     │                                                                                  │
+│    │     │ The above exception was the direct cause of the following exception:             │
+│    │     │                                                                                  │
+│    │     │ Traceback (most recent call last):                                               │
+│    │     │   File ".../dawgz/schedulers.py", line 352, in exec                              │
+│    │     │     raise JobFailedError(repr(job)) from e                                       │
+│    │     │ dawgz.schedulers.JobFailedError: a()                                             │
+╰────┴─────┴──────────────────────────────────────────────────────────────────────────────────╯
 ```
 
 ## Train example
@@ -54,10 +57,9 @@ preprocessing → train_1 → train_2 → train_3
 and scheduling the dependency graph results in the following output
 
 ```
+$ python examples/train.py
 data preprocessing
-training step 0
 training step 1
-evaluation step 0
 evaluation step 1
 training step 2
 evaluation step 2
@@ -68,22 +70,19 @@ evaluation step 3
 If we change the backend to `'dummy'`, we observe that the evaluation steps are not necessarily consecutive.
 
 ```
+$ python examples/train.py
 START preprocessing()
 END   preprocessing()
-START train(0)
-END   train(0)
-START evaluate(0)
 START train(1)
 END   train(1)
 START evaluate(1)
 START train(2)
-END   evaluate(0)
-END   evaluate(1)
 END   train(2)
 START evaluate(2)
 START train(3)
+END   evaluate(1)
 END   train(3)
 START evaluate(3)
-END   evaluate(3)
 END   evaluate(2)
+END   evaluate(3)
 ```

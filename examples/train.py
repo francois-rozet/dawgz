@@ -22,7 +22,7 @@ if __name__ == "__main__":
     main_jobs = [preprocessing()]
     eval_jobs = []
 
-    for i in range(4):
+    for i in range(1, 4):
         main_jobs.append(train(i).after(main_jobs[-1]))
         eval_jobs.append(evaluate(i).after(main_jobs[-1]))
 
