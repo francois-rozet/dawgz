@@ -159,7 +159,7 @@ class Scheduler(ABC):
             table.add_column(entry.capitalize(), justify="left", no_wrap=False)
 
             if entry == "source":
-                getter = lambda job, i: rich.syntax.Syntax(
+                getter = lambda job, i: rich.syntax.Syntax(  # noqa: E731
                     getattr(job if i is None else job[i], "source", ""),
                     lexer="python",
                     theme=ANSITheme(),
@@ -168,7 +168,7 @@ class Scheduler(ABC):
             elif entry == "settings":
                 getter = self.settings
             elif entry == "input":
-                getter = lambda job, i: rich.syntax.Syntax(
+                getter = lambda job, i: rich.syntax.Syntax(  # noqa: E731
                     repr(job if i is None else job[i]),
                     lexer="python",
                     theme=ANSITheme(),
@@ -573,10 +573,10 @@ class SlurmScheduler(Scheduler):
         if isinstance(job, JobArray):
             pklfile = str(pklfile).replace(".pkl", "_{}.pkl")
 
-            await asyncio.wait(
+            await asyncio.wait([
                 loop.run_in_executor(None, Path(pklfile.format(i)).write_bytes, job[i].pkl)
                 for i in range(len(job))
-            )
+            ])
 
             pycode = [
                 "#!/usr/bin/env python",

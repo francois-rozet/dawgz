@@ -87,7 +87,9 @@ def main() -> None:
     parser.add_argument("i", default=None, nargs="?", type=int, help="job array index")
 
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("-c", "--cancel", default=False, action="store_true", help="cancel workflow or job")
+    group.add_argument(
+        "-c", "--cancel", default=False, action="store_true", help="cancel workflow or job"
+    )
 
     for entry in ["source", "settings", "input", "output"]:
         group.add_argument(
