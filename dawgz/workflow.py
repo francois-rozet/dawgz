@@ -59,6 +59,7 @@ class Job(Node):
         if fun is None:
             self.pkl = None
         else:
+            inspect.signature(fun).bind(*args, **kwargs)
             self.pkl = pickle.dumps(partial(fun, *args, **kwargs))
 
         # Name

@@ -50,6 +50,26 @@ def pools(request: pytest.FixtureRequest) -> int | None:
 #########
 
 
+def test_not_callable() -> None:
+    with pytest.raises(TypeError, match="not a callable"):
+        dawgz.job("callable")()
+
+
+def test_missing_args() -> None:
+    with pytest.raises(TypeError, match="missing"):
+        identity()
+
+
+def test_too_many_args() -> None:
+    with pytest.raises(TypeError, match="too many"):
+        identity(1, 2)
+
+
+def test_unexpected_kwargs() -> None:
+    with pytest.raises(TypeError, match="unexpected"):
+        identity(1, y=2)
+
+
 def test_single_job(pools: int | None) -> None:
     job = identity("x")
     scheduler = dawgz.schedule(job, backend="async", pools=pools)
