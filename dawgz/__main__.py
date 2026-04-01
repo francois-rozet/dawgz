@@ -26,7 +26,7 @@ def report(
     workflow: int | None = None,
     job: int | None = None,
     i: int | None = None,
-    entry: Literal["source", "settings", "input", "output"] = "output",
+    entry: Literal["source", "settings", "input", "logs"] = "logs",
 ) -> None:
     workflows = list_workflows()
 
@@ -91,7 +91,7 @@ def main() -> None:
         "-c", "--cancel", default=False, action="store_true", help="cancel workflow or job"
     )
 
-    for entry in ["source", "settings", "input", "output"]:
+    for entry in ["source", "settings", "input", "logs"]:
         group.add_argument(
             f"--{entry}",
             dest="entry",
@@ -106,7 +106,7 @@ def main() -> None:
     if args.cancel:
         cancel(args.workflow, args.job, args.i)
     else:
-        report(args.workflow, args.job, args.i, args.entry or "output")
+        report(args.workflow, args.job, args.i, args.entry or "logs")
 
 
 if __name__ == "__main__":

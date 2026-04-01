@@ -26,4 +26,4 @@ if __name__ == "__main__":
         main_jobs.append(train(i).after(main_jobs[-1]))
         eval_jobs.append(evaluate(i).after(main_jobs[-1]))
 
-    dawgz.schedule(*eval_jobs, backend="async")
+    dawgz.schedule(*eval_jobs, backend="async", max_workers=4)

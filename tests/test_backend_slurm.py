@@ -4,7 +4,6 @@ import os
 import pytest
 import re
 import subprocess
-import sys
 
 from collections.abc import Generator
 from pathlib import Path
@@ -12,7 +11,15 @@ from unittest.mock import MagicMock, patch
 
 import dawgz
 
-from dawgz.schedulers import SlurmScheduler
+########
+# Jobs #
+########
+
+
+@dawgz.job
+def echo(x: object) -> None:
+    print(repr(x))
+
 
 ############
 # Fixtures #
@@ -185,13 +192,9 @@ def test_shfile() -> None:
 @pytest.mark.parametrize("wait_mode", ["all", "any"])
 @pytest.mark.parametrize("status", ["success", "failure"])
 def test_dependencies(wait_mode: str, status: str) -> None:
-    @dawgz.job
-    def f() -> None:
-        pass
-
-    a_job = f()
-    b_job = f()
-    c_job = f().after(a_job, b_job, status=status).waitfor(wait_mode)
+    a_job = echo("a")
+    b_job = echo("b")
+    c_job = echo("c").after(a_job, b_job, status=status).waitfor(wait_mode)
 
     scheduler = dawgz.schedule(c_job, backend="slurm")
 
@@ -209,12 +212,8 @@ def test_dependencies(wait_mode: str, status: str) -> None:
 
 
 def test_dependency_submission_failure() -> None:
-    @dawgz.job
-    def f() -> None:
-        pass
-
-    a_job = f()
-    b_job = f().after(a_job)
+    a_job = echo("a")
+    b_job = echo("b").after(a_job)
 
     def failing_sbatch(cmd: list[str], **ignore) -> subprocess.CompletedProcess[str]:
         if cmd[0] == "sbatch":
@@ -224,20 +223,13 @@ def test_dependency_submission_failure() -> None:
     with patch("subprocess.run", side_effect=failing_sbatch):
         scheduler = dawgz.schedule(b_job, backend="slurm")
 
-    assert "JobSubmissionError" in scheduler.traces[a_job]
-    assert "DependencyNeverSatisfiedError" in scheduler.traces[b_job]
+    assert "JobSubmissionError" in scheduler.logs(a_job)
+    assert "JobNeverSatisfiedError" in scheduler.logs(b_job)
 
 
 def test_single_job() -> None:
-    def print_env() -> None:
-        print(os.environ["DAWGZ_TEST_VAR"])
-
-    job = dawgz.job(
-        print_env,
-        interpreter=sys.executable,
-        env=["export DAWGZ_TEST_VAR=hello_world"],
-    )()
-
+    x = "a"
+    job = echo(x)
     scheduler = dawgz.schedule(job, backend="slurm")
 
     tag = scheduler.tag(job)
@@ -245,21 +237,12 @@ def test_single_job() -> None:
 
     sbatch(shfile)
 
-    assert scheduler.output(job) == "hello_world"
+    assert scheduler.logs(job) == repr(x)
 
 
 def test_job_array() -> None:
-    def print_item(x: object) -> None:
-        print(x)
-
     xs = ["a", "b", "c"]
-    jobs = [
-        dawgz.job(
-            print_item,
-            interpreter=sys.executable,
-        )(x)
-        for x in xs
-    ]
+    jobs = [echo(x) for x in xs]
     array = dawgz.array(*jobs)
 
     scheduler = dawgz.schedule(array, backend="slurm")
@@ -270,10 +253,31 @@ def test_job_array() -> None:
     sbatch(shfile)
 
     for i, x in enumerate(xs):
-        assert scheduler.output(array, i) == f"{x}"
+        assert scheduler.logs(array, i) == repr(x)
 
 
-def test_cancel(squeue: dict) -> None:
+def test_export_env_var() -> None:
+    def get_env() -> None:
+        print(os.environ["DAWGZ_VAR"])
+
+    job = dawgz.job(
+        get_env,
+        env=[
+            "export DAWGZ_VAR='hello, world'",
+        ],
+    )()
+
+    scheduler = dawgz.schedule(job, backend="slurm")
+
+    tag = scheduler.tag(job)
+    shfile = scheduler.path / f"{tag}.sh"
+
+    sbatch(shfile)
+
+    assert scheduler.logs(job) == "hello, world"
+
+
+def test_cancel() -> None:
     @dawgz.job
     def f() -> None:
         pass
@@ -283,7 +287,8 @@ def test_cancel(squeue: dict) -> None:
     scheduler = dawgz.schedule(job, backend="slurm")
     assert scheduler.state(job) == "PENDING"
 
-    SlurmScheduler.sacct.cache_clear()
-
     scheduler.cancel(job)
+    assert scheduler.state(job) == "PENDING"
+
+    dawgz.schedulers.SACCT_CACHE.clear()
     assert scheduler.state(job) == "CANCELLED"

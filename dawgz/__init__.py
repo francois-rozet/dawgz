@@ -61,7 +61,7 @@ def job(
 
     Arguments:
         fun: A function.
-        name: The job name.
+        name: The job name. If `None`, use the function name instead.
         shell: The scripting shell.
         interpreter: The interpreter command. For example, `python`, `uv run` or `torchrun`.
         env: A sequence of shell commands to execute before the function is run. For example,
@@ -95,16 +95,17 @@ def job(
     return factory
 
 
-def array(*jobs: Job, throttle: int | None = None) -> JobArray:
+def array(*jobs: Job, name: str | None = None, throttle: int | None = None) -> JobArray:
     r"""Creates an array from a group of independent jobs.
 
     Arguments:
         jobs: A group of jobs. These jobs should not have dependencies or dependents.
+        name: The job array name. If `None`, use the jobs' name if unique, and `"array"` otherwise.
         throttle: The maximum number of simultaneously running jobs in the array.
             Only affects the Slurm backend.
     """
 
-    return JobArray(*jobs, throttle=throttle)
+    return JobArray(*jobs, name=name, throttle=throttle)
 
 
 def schedule(
@@ -116,18 +117,24 @@ def schedule(
 ) -> Scheduler:
     r"""Schedules a group of jobs.
 
-    The `async` and `dummy` backends execute jobs within the current Python interpreter,
-    and will therefore ignore interpreter, environment, and resource settings.
+    The `async` and `dummy` backends execute jobs asynchronously within the current
+    Python interpreter. They ignore interpreter, environment, and resource settings.
 
-    Jobs that have already been executed, as determined by their completion status, will
-    be pruned from the workflow.
+    The `slurm` backend submits jobs to the Slurm queue. Resources are allocated by the
+    Slurm manager according to the job settings. Most settings (e.g. `account`,
+    `export`, `partition`) are passed directly to `sbatch`. A few settings (e.g. `cpus`,
+    `ram`, `timeout`) are translated into their `sbatch` equivalents.
+
+    Regardless of the backend, jobs that are not pending, as determined by their
+    completion status, will be pruned from the workflow.
 
     Arguments:
         jobs: A group of jobs describing a workflow.
         backend: The scheduling backend.
         name: The worflow name. If `None`, use the caller's filename instead.
         quiet: Whether to display eventual job errors or not.
-        kwargs: Keyword arguments passed to the scheduler's constructor.
+        kwargs: Keyword arguments passed to the scheduler's constructor. For example,
+            `max_workers` for the `async` backend.
 
     Returns:
         The workflow scheduler.

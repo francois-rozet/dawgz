@@ -7,7 +7,7 @@ import inspect
 from collections.abc import Callable, Iterator, Sequence
 from functools import partial
 from rich.pretty import pretty_repr
-from textwrap import indent
+from textwrap import dedent, indent
 from typing import (
     Any,
     Literal,
@@ -74,13 +74,13 @@ class Job(Node):
 
         # Input
         def prepr(x: object) -> str:
-            return pretty_repr(x, indent_size=2, max_width=88).strip("\n")
+            return pretty_repr(x, indent_size=2).strip("\n")
 
         self.args_repr = [prepr(a) for a in args] + [f"{k}=" + prepr(v) for k, v in kwargs.items()]
 
         # Source
         try:
-            self.source = inspect.getsource(fun).strip("\n")
+            self.source = dedent(inspect.getsource(fun).strip("\n"))
         except TypeError:
             self.source = ""
 
@@ -169,16 +169,24 @@ class Job(Node):
 
 
 class JobArray(Job):
-    def __init__(self, *jobs: Job, throttle: int | None = None) -> None:
+    def __init__(self, *jobs: Job, name: str | None = None, throttle: int | None = None) -> None:
         self.array = jobs
         self.throttle = throttle
 
         assert len(self.array) >= 1, "array should contain at least one job"
         assert len(self.array) == len(set(self.array)), "array should not contain duplicates"
 
+        if name is None:
+            names = set(job.name for job in self.array)
+            if len(names) > 1:
+                name = "array"
+            else:
+                name = names.pop()
+
         super().__init__(
             fun=None,
-            name=self.array[0].name,
+            name=name,
+            shell=self.array[0].shell,
             interpreter=self.array[0].interpreter,
             env=self.array[0].env,
             settings=self.array[0].settings,
@@ -188,7 +196,7 @@ class JobArray(Job):
             assert not job.parents, "jobs in an array should not have dependencies"
             assert not job.children, "jobs in an array should not have dependents"
 
-        for key in ("name", "shell", "interpreter", "env", "settings"):
+        for key in ("shell", "interpreter", "env", "settings"):
             for job in self.array:
                 assert getattr(job, key) == getattr(self, key), (
                     f"all jobs in an array should have the same {key}"

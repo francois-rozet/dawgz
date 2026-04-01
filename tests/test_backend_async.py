@@ -3,11 +3,8 @@
 import pytest
 
 from pathlib import Path
-from typing import Any
 
 import dawgz
-
-from dawgz.schedulers import CyclicDependencyGraphError
 
 ########
 # Jobs #
@@ -15,19 +12,13 @@ from dawgz.schedulers import CyclicDependencyGraphError
 
 
 @dawgz.job
-def identity(x: Any) -> Any:
-    return x
+def echo(x: object) -> None:
+    print(repr(x))
 
 
 @dawgz.job
 def fail() -> None:
     raise RuntimeError("intentional failure")
-
-
-@dawgz.job
-def mutate_list(items: list) -> list:
-    items.append("mutated")
-    return items
 
 
 ############
@@ -38,11 +29,6 @@ def mutate_list(items: list) -> list:
 @pytest.fixture(autouse=True)
 def redirect_dawgz_dir(tmp_path: Path) -> None:
     dawgz.set_dawgz_dir(tmp_path / ".dawgz")
-
-
-@pytest.fixture(params=[None, 4], ids=["threads", "processes"])
-def pools(request: pytest.FixtureRequest) -> int | None:
-    return request.param
 
 
 #########
@@ -57,171 +43,236 @@ def test_not_callable() -> None:
 
 def test_missing_args() -> None:
     with pytest.raises(TypeError, match="missing"):
-        identity()
+        echo()
 
 
 def test_too_many_args() -> None:
     with pytest.raises(TypeError, match="too many"):
-        identity(1, 2)
+        echo(1, 2)
 
 
 def test_unexpected_kwargs() -> None:
     with pytest.raises(TypeError, match="unexpected"):
-        identity(1, y=2)
+        echo(1, y=2)
 
 
-def test_single_job(pools: int | None) -> None:
-    job = identity("x")
-    scheduler = dawgz.schedule(job, backend="async", pools=pools)
-    assert scheduler.results[job] == "x"
+def test_single_job() -> None:
+    x = "a"
+    job = echo(x)
+    scheduler = dawgz.schedule(job, backend="async")
+
+    assert scheduler.logs(job) == repr(x)
+    assert scheduler.state(job) == "COMPLETED"
     assert job not in scheduler.traces
 
 
-def test_failing_job(pools: int | None) -> None:
+def test_failing_job() -> None:
     job = fail()
-    scheduler = dawgz.schedule(job, backend="async", pools=pools)
-    assert "RuntimeError" in scheduler.traces[job]
-    assert job not in scheduler.results
+    scheduler = dawgz.schedule(job, backend="async")
+
+    assert "RuntimeError" in scheduler.logs(job)
+    assert "JobFailedError" in scheduler.traces[job]
+    assert scheduler.state(job) == "FAILED"
 
 
-def test_mutation(pools: int | None) -> None:
-    items = ["a", "b", "c"]
-    job = mutate_list(items)
-    items.append("d")
-    scheduler = dawgz.schedule(job, backend="async", pools=pools)
-    assert "d" not in scheduler.results[job]
-    assert "mutated" in scheduler.results[job]
-    assert "mutated" not in items
+def test_mutation() -> None:
+    @dawgz.job
+    def mutate_list() -> None:
+        xs.append("e")
+        print(xs)
+
+    xs = ["a", "b", "c"]
+    job = mutate_list()
+    xs.append("d")
+
+    scheduler = dawgz.schedule(job, backend="async")
+
+    assert "'d'" not in scheduler.logs(job)
+    assert "'e'" in scheduler.logs(job)
+    assert "e" not in xs
 
 
-def test_linear_chain(pools: int | None) -> None:
-    a, b, c = "abc"
-    a_job = identity(a)
-    b_job = identity(b).after(a_job)
-    c_job = identity(c).after(b_job)
-    scheduler = dawgz.schedule(c_job, backend="async", pools=pools)
-    assert scheduler.results[a_job] == a
-    assert scheduler.results[b_job] == b
-    assert scheduler.results[c_job] == c
+def test_chain() -> None:
+    xs = ["a", "b", "c", "d"]
+    jobs = [echo(x) for x in xs]
+    jobs[1].after(jobs[0])
+    jobs[2].after(jobs[1])
+    jobs[3].after(jobs[2])
+
+    scheduler = dawgz.schedule(jobs[-1], backend="async")
+
+    for x, job in zip(xs, jobs, strict=True):
+        assert scheduler.logs(job) == repr(x)
+        assert scheduler.state(job) == "COMPLETED"
 
 
-def test_fan_out(pools: int | None) -> None:
-    a, b, c, d = "abcd"
-    a_job = identity(a)
-    b_job = identity(b).after(a_job)
-    c_job = identity(c).after(a_job)
-    d_job = identity(d).after(a_job)
-    scheduler = dawgz.schedule(b_job, c_job, d_job, backend="async", pools=pools)
-    assert scheduler.results[a_job] == a
-    assert scheduler.results[b_job] == b
-    assert scheduler.results[c_job] == c
-    assert scheduler.results[d_job] == d
+def test_diamond() -> None:
+    xs = ["a", "b", "c", "d"]
+    jobs = [echo(x) for x in xs]
+    jobs[1].after(jobs[0])
+    jobs[2].after(jobs[0])
+    jobs[3].after(jobs[1], jobs[2])
+
+    scheduler = dawgz.schedule(jobs[-1], backend="async")
+
+    for x, job in zip(xs, jobs, strict=True):
+        assert scheduler.logs(job) == repr(x)
+        assert scheduler.state(job) == "COMPLETED"
 
 
-def test_fan_in(pools: int | None) -> None:
-    a, b, c, d = "abcd"
-    a_job = identity(a)
-    b_job = identity(b)
-    c_job = identity(c)
-    d_job = identity(d).after(a_job, b_job, c_job)
-    scheduler = dawgz.schedule(d_job, backend="async", pools=pools)
-    assert scheduler.results[a_job] == a
-    assert scheduler.results[b_job] == b
-    assert scheduler.results[c_job] == c
-    assert scheduler.results[d_job] == d
+def test_cyclic_dependency() -> None:
+    xs = ["a", "b", "c"]
+    jobs = [echo(x) for x in xs]
+    jobs[1].after(jobs[0])
+    jobs[2].after(jobs[1])
+    jobs[0].after(jobs[2])
+
+    with pytest.raises(dawgz.schedulers.CyclicDependencyGraphError):
+        dawgz.schedule(*jobs, backend="async")
 
 
-def test_diamond(pools: int | None) -> None:
-    a, b, c, d = "abcd"
-    a_job = identity(a)
-    b_job = identity(b).after(a_job)
-    c_job = identity(c).after(a_job)
-    d_job = identity(d).after(b_job, c_job)
-    scheduler = dawgz.schedule(d_job, backend="async", pools=pools)
-    assert scheduler.results[a_job] == a
-    assert scheduler.results[b_job] == b
-    assert scheduler.results[c_job] == c
-    assert scheduler.results[d_job] == d
-
-
-def test_cyclic_dependency(pools: int | None) -> None:
-    a_job = identity("a")
-    b_job = identity("b")
-    a_job.after(b_job)
-    b_job.after(a_job)
-    with pytest.raises(CyclicDependencyGraphError):
-        dawgz.schedule(a_job, backend="async", pools=pools)
-
-
-def test_blocked_by_failed_dep(pools: int | None) -> None:
+def test_blocked_by_failed_dep() -> None:
     a_job = fail()
-    b_job = identity("b").after(a_job)
-    scheduler = dawgz.schedule(b_job, backend="async", pools=pools)
-    assert "RuntimeError" in scheduler.traces[a_job]
-    assert "DependencyNeverSatisfiedError" in scheduler.traces[b_job]
+    b_job = echo("b").after(a_job)
+
+    scheduler = dawgz.schedule(b_job, backend="async")
+
+    assert "RuntimeError" in scheduler.logs(a_job)
+    assert "JobNeverSatisfiedError" in scheduler.logs(b_job)
     assert scheduler.state(a_job) == "FAILED"
     assert scheduler.state(b_job) == "CANCELLED"
 
 
-def test_triggered_by_failed_dep(pools: int | None) -> None:
+def test_triggered_by_failed_dep() -> None:
     a_job = fail()
-    b_job = identity("b").after(a_job, status="failure")
-    scheduler = dawgz.schedule(b_job, backend="async", pools=pools)
-    assert "RuntimeError" in scheduler.traces[a_job]
-    assert scheduler.results[b_job] == "b"
+    b_job = echo("b").after(a_job, status="failure")
+
+    scheduler = dawgz.schedule(b_job, backend="async")
+
+    assert "RuntimeError" in scheduler.logs(a_job)
+    assert scheduler.logs(b_job) == "'b'"
     assert scheduler.state(a_job) == "FAILED"
     assert scheduler.state(b_job) == "COMPLETED"
 
 
-def test_waitfor_any_one_succeeds(pools: int | None) -> None:
+def test_waitfor_any_one_succeeds() -> None:
     a_job = fail()
-    b_job = identity("b")
-    c_job = identity("c").after(a_job, b_job).waitfor("any")
-    scheduler = dawgz.schedule(c_job, backend="async", pools=pools)
-    assert "RuntimeError" in scheduler.traces[a_job]
-    assert scheduler.results[b_job] == "b"
-    assert scheduler.results[c_job] == "c"
+    b_job = echo("b")
+    c_job = echo("c").after(a_job, b_job).waitfor("any")
+
+    scheduler = dawgz.schedule(c_job, backend="async")
+
+    assert "RuntimeError" in scheduler.logs(a_job)
+    assert scheduler.logs(b_job) == "'b'"
+    assert scheduler.logs(c_job) == "'c'"
+    assert scheduler.state(a_job) == "FAILED"
+    assert scheduler.state(b_job) == "COMPLETED"
+    assert scheduler.state(c_job) == "COMPLETED"
 
 
-def test_waitfor_any_all_fail(pools: int | None) -> None:
+def test_waitfor_any_all_fail() -> None:
     a_job = fail()
     b_job = fail()
-    c_job = identity("c").after(a_job, b_job).waitfor("any")
-    scheduler = dawgz.schedule(c_job, backend="async", pools=pools)
-    assert "RuntimeError" in scheduler.traces[a_job]
-    assert "RuntimeError" in scheduler.traces[b_job]
-    assert "DependencyNeverSatisfiedError" in scheduler.traces[c_job]
+    c_job = echo("c").after(a_job, b_job).waitfor("any")
+
+    scheduler = dawgz.schedule(c_job, backend="async")
+
+    assert "RuntimeError" in scheduler.logs(a_job)
+    assert "RuntimeError" in scheduler.logs(b_job)
+    assert "JobNeverSatisfiedError" in scheduler.logs(c_job)
+    assert scheduler.state(a_job) == "FAILED"
+    assert scheduler.state(b_job) == "FAILED"
+    assert scheduler.state(c_job) == "CANCELLED"
 
 
-def test_mark_success(pools: int | None) -> None:
+def test_triggered_by_success_status() -> None:
     a_job = fail().mark("success")
-    b_job = identity("b").after(a_job)
-    scheduler = dawgz.schedule(b_job, backend="async", pools=pools)
-    assert a_job not in scheduler.results
+    b_job = echo("b").after(a_job)
+
+    scheduler = dawgz.schedule(b_job, backend="async")
+
+    assert a_job not in scheduler.order
     assert a_job not in scheduler.traces
-    assert scheduler.results[b_job] == "b"
+    assert scheduler.logs(b_job) == "'b'"
+    assert scheduler.state(a_job) == "UNKNOWN"
+    assert scheduler.state(b_job) == "COMPLETED"
 
 
-def test_mark_failure(pools: int | None) -> None:
-    a_job = identity("a").mark("failure")
-    b_job = identity("b").after(a_job, status="failure")
-    scheduler = dawgz.schedule(b_job, backend="async", pools=pools)
-    assert a_job not in scheduler.results
+def test_blocked_by_failure_status() -> None:
+    a_job = echo("a").mark("failure")
+    b_job = echo("b").after(a_job)
+
+    scheduler = dawgz.schedule(b_job, backend="async")
+
+    assert a_job not in scheduler.order
     assert a_job not in scheduler.traces
-    assert scheduler.results[b_job] == "b"
+    assert "JobNeverSatisfiedError" in scheduler.logs(b_job)
+    assert scheduler.state(a_job) == "UNKNOWN"
+    assert scheduler.state(b_job) == "CANCELLED"
 
 
-def test_job_array(pools: int | None) -> None:
-    xs = "abc"
-    array = dawgz.array(*map(identity, xs))
-    scheduler = dawgz.schedule(array, backend="async", pools=pools)
-    assert all(scheduler.results[array][i] == x for i, x in enumerate(xs))
+def test_triggered_by_failure_status() -> None:
+    a_job = echo("a").mark("failure")
+    b_job = echo("b").after(a_job, status="failure")
+
+    scheduler = dawgz.schedule(b_job, backend="async")
+
+    assert a_job not in scheduler.order
+    assert a_job not in scheduler.traces
+    assert scheduler.logs(b_job) == "'b'"
+    assert scheduler.state(a_job) == "UNKNOWN"
+    assert scheduler.state(b_job) == "COMPLETED"
 
 
-def test_job_array_with_dep(tmp_path: Path, pools: int | None) -> None:
-    a_job = identity("a")
-    xs = "abc"
-    array = dawgz.array(*map(identity, xs)).after(a_job)
-    scheduler = dawgz.schedule(array, backend="async", pools=pools)
-    assert scheduler.results[a_job] == "a"
-    assert all(scheduler.results[array][i] == x for i, x in enumerate(xs))
+def test_array() -> None:
+    xs = ["a", "b", "c"]
+    jobs = [echo(x) for x in xs]
+    array = dawgz.array(*jobs)
+
+    scheduler = dawgz.schedule(array, backend="async")
+
+    assert scheduler.state(array) == "COMPLETED"
+
+    for i, x in enumerate(xs):
+        assert scheduler.logs(array, i) == repr(x)
+
+
+def test_array_one_fails() -> None:
+    xs = ["a", "b", "c"]
+    jobs = [echo(x) for x in xs] + [fail()]
+    array = dawgz.array(*jobs)
+
+    scheduler = dawgz.schedule(array, backend="async")
+
+    assert scheduler.state(array) == "FAILED"
+
+    for i, x in enumerate(xs):
+        assert scheduler.logs(array, i) == repr(x)
+
+    assert "RuntimeError" in scheduler.logs(array, len(xs))
+
+
+def test_triggered_by_array() -> None:
+    xs = ["a", "b", "c"]
+    jobs = [echo(x) for x in xs]
+    array = dawgz.array(*jobs)
+    y_job = echo("y").after(array)
+
+    scheduler = dawgz.schedule(y_job, backend="async")
+
+    assert scheduler.state(array) == "COMPLETED"
+    assert scheduler.logs(y_job) == "'y'"
+    assert scheduler.state(y_job) == "COMPLETED"
+
+
+def test_blocked_by_failed_array() -> None:
+    xs = ["a", "b", "c"]
+    jobs = [echo(x) for x in xs] + [fail()]
+    array = dawgz.array(*jobs)
+    y_job = echo("y").after(array)
+
+    scheduler = dawgz.schedule(y_job, backend="async")
+
+    assert scheduler.state(array) == "FAILED"
+    assert "JobNeverSatisfiedError" in scheduler.logs(y_job)
+    assert scheduler.state(y_job) == "CANCELLED"

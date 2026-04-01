@@ -10,6 +10,7 @@ import sys
 import traceback
 import uuid
 
+from pathlib import Path
 from typing import IO, Any, overload
 from wonderwords import RandomWord
 
@@ -134,10 +135,34 @@ def human_uuid() -> str:
     return f"{adjective}_{noun}_{hex}"
 
 
-def runpickle(f: bytes, /, *args, **kwargs) -> Any:
-    r"""Runs a pickled function `f` with arguments."""
+def runpickle(
+    data: bytes,
+    /,
+    *args,
+    logfile: str | Path | None = None,
+    **kwargs,
+) -> None:
+    r"""Runs a pickled function with arguments.
 
-    return pickle.loads(f)(*args, **kwargs)
+    If a log file is provided, the standard output and error streams are copied to the
+    log file.
+    """
+
+    if logfile:
+        with open(logfile, mode="a") as f:
+            sys.stdout = TeeStream(sys.stdout, f)
+            sys.stderr = TeeStream(sys.stderr, f)
+
+            try:
+                pickle.loads(data)(*args, **kwargs)
+            except Exception as e:
+                print(trace(e, patterns=["runpickle"]), file=sys.stderr)
+                raise
+            finally:
+                sys.stdout = sys.stdout.parent
+                sys.stderr = sys.stderr.parent
+    else:
+        pickle.loads(data)(*args, **kwargs)
 
 
 def slugify(text: str) -> str:
@@ -149,15 +174,52 @@ def slugify(text: str) -> str:
     return slug
 
 
-def trace(error: Exception) -> str:
+def trace(
+    error: Exception,
+    patterns: tuple[str, ...] = (r"concurrent/futures", r"subprocess\.py"),
+) -> str:
     r"""Returns the trace of an error."""
 
-    lines = traceback.format_exception(
+    blocks = traceback.format_exception(
         type(error),
         error,
         error.__traceback__,
     )
 
-    lines = [line for line in lines if not re.search(r"futures\/\w+\.py", line)]
+    lines = []
+
+    for block in blocks:
+        if "_RemoteTraceback" in block:
+            block = block.replace("concurrent.futures.process._RemoteTraceback: \n", "")
+            block = block.replace('"""\n', "")
+
+            for line in re.split(r"(?=  File)", block):
+                lines.append(line)
+        else:
+            lines.append(block)
+
+    lines = [line for line in lines if not any(re.search(pattern, line) for pattern in patterns)]
 
     return "".join(lines).strip("\n")
+
+
+class TeeStream:
+    r"""Wrapper to copy a parent stream to a file."""
+
+    def __init__(self, parent: IO[str], file: IO[str]) -> None:
+        self.parent = parent
+        self.file = file
+
+    def write(self, data: str) -> int:
+        self.file.write(data)
+        return self.parent.write(data)
+
+    def flush(self) -> None:
+        self.file.flush()
+        return self.parent.flush()
+
+    def fileno(self) -> int:
+        return self.parent.fileno()
+
+    def isatty(self) -> bool:
+        return self.parent.isatty()

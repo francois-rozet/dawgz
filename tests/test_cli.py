@@ -16,7 +16,7 @@ from dawgz.__main__ import main
 
 @dawgz.job
 def noop() -> int:
-    return 42
+    print("42")
 
 
 @dawgz.job

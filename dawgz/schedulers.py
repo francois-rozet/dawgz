@@ -14,47 +14,19 @@ import rich.syntax
 import rich.table
 import rich.text
 import subprocess
+import time
 
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
-from functools import cache
+from functools import partial
 from pathlib import Path
 from typing import Any, Literal
 
 from .constants import get_dawgz_dir
 from .utils import cat, future, human_uuid, pickle, runpickle, slugify, trace
 from .workflow import Job, JobArray, cycles, prune
-
-
-class StateHighlighter(rich.highlighter.Highlighter):
-    def highlight(self, text: rich.text.Text) -> None:
-        for match in re.finditer(r"\w+", text.plain):
-            state, i, j = match.group(), match.start(), match.end()
-
-            if state == "PENDING":
-                text.stylize("dim", i, j)
-            elif state == "RUNNING":
-                text.stylize("cyan", i, j)
-            elif state == "COMPLETED":
-                text.stylize("green", i, j)
-            elif state == "FAILED":
-                text.stylize("red", i, j)
-            elif state == "CANCELLED":
-                text.stylize("dark_orange", i, j)
-            elif state == "UNKNOWN":
-                text.stylize("magenta", i, j)
-            else:
-                pass
-
-
-class ANSITheme(rich.syntax.ANSISyntaxTheme):
-    def __init__(self) -> None:
-        super().__init__({
-            token: style + rich.style.Style(bold=False)
-            for token, style in rich.syntax.ANSI_DARK.items()
-        })
 
 
 class Scheduler(ABC):
@@ -81,8 +53,8 @@ class Scheduler(ABC):
 
         # Jobs
         self.order: dict[Job, int] = {}
-        self.results: dict[Job, Any] = {}
         self.traces: dict[Job, str] = {}
+        self.results: dict[Job, Any] = {}
 
     def dump(self) -> None:
         with open(self.path / "dump.pkl", "wb") as f:
@@ -113,7 +85,7 @@ class Scheduler(ABC):
 
     def state(self, job: Job, i: int | None = None) -> str:
         if job in self.traces:
-            if "DependencyNeverSatisfiedError" in self.traces[job]:
+            if "JobNeverSatisfiedError" in self.traces[job]:
                 return "CANCELLED"
             else:
                 return "FAILED"
@@ -122,61 +94,66 @@ class Scheduler(ABC):
         else:
             return "UNKNOWN"
 
-    def output(self, job: Job, i: int | None = None) -> str | None:
-        if job in self.traces:
-            return self.traces[job]
-        elif job in self.results:
-            if isinstance(job, JobArray):
-                result = self.results[job][i]
-            else:
-                result = self.results[job]
+    def logs(self, job: Job, i: int | None = None) -> str | None:
+        tag = self.tag(job)
 
-            return None if result is None else str(result)
+        if isinstance(job, JobArray):
+            logfile = self.path / f"{tag}_{i}.log"
+        else:
+            logfile = self.path / f"{tag}.log"
+
+        if logfile.exists():
+            return cat(logfile.read_text(errors="replace"), -1).strip("\n")
+        elif job in self.traces:
+            return self.traces[job].strip("\n")
         else:
             return None
 
     def settings(self, job: Job, i: int | None = None) -> str | None:
         return None
 
+    def lookup(
+        self,
+        job: Job,
+        i: int | None = None,
+        *,
+        entry: Literal["source", "settings", "input", "state", "logs"] = "logs",
+    ) -> str | rich.text.Text | None:
+        if entry == "source":
+            return rich.syntax.Syntax(
+                getattr(job if i is None else job[i], "source", ""),
+                lexer="python",
+                theme=ANSITheme(),
+                dedent=True,
+            )
+        elif entry == "settings":
+            return self.settings(job, i)
+        elif entry == "input":
+            return repr(job if i is None else job[i])
+        elif entry == "state":
+            return StateHighlighter()(self.state(job, i))
+        elif entry == "logs":
+            return self.logs(job, i)
+        else:
+            raise NotImplementedError(f"Unknown entry '{entry}'.")
+
     def report(
         self,
         job: Job | int | None = None,
         i: int | None = None,
         *,
-        entry: Literal["source", "settings", "input", "output"] = "output",
+        entry: Literal["source", "settings", "input", "logs"] = "logs",
     ) -> rich.table.Table:
         table = rich.table.Table(box=rich.box.ROUNDED)
         table.add_column("", justify="right", no_wrap=True, min_width=2)
         table.add_column("Job", justify="left", no_wrap=True)
         table.add_column("State", justify="left", no_wrap=True)
 
-        hl = StateHighlighter()
-
         if job is None:
             for job, i in self.order.items():  # noqa: PLR1704
-                table.add_row(str(i), str(job), hl(self.state(job)))
+                table.add_row(str(i), str(job), self.lookup(job, entry="state"))
         else:
             table.add_column(entry.capitalize(), justify="left", no_wrap=False)
-
-            if entry == "source":
-                getter = lambda job, i: rich.syntax.Syntax(  # noqa: E731
-                    getattr(job if i is None else job[i], "source", ""),
-                    lexer="python",
-                    theme=ANSITheme(),
-                    dedent=True,
-                )
-            elif entry == "settings":
-                getter = self.settings
-            elif entry == "input":
-                getter = lambda job, i: rich.syntax.Syntax(  # noqa: E731
-                    repr(job if i is None else job[i]),
-                    lexer="python",
-                    theme=ANSITheme(),
-                )
-            elif entry == "output":
-                getter = self.output
-            else:
-                raise NotImplementedError(f"Unknown entry '{entry}'.")
 
             if isinstance(job, int):
                 job = list(self.order)[job]
@@ -188,11 +165,19 @@ class Scheduler(ABC):
                     indices = [i % len(job)]
 
                 for j in indices:
-                    table.add_row(str(j), str(job[j]), hl(self.state(job, j)), getter(job, j))
+                    table.add_row(
+                        str(j),
+                        str(job[j]),
+                        self.lookup(job, j, entry="state"),
+                        self.lookup(job, j, entry=entry),
+                    )
                     table.add_section()
             else:
                 table.add_row(
-                    str(self.order[job]), str(job), hl(self.state(job)), getter(job, None)
+                    str(self.order[job]),
+                    str(job),
+                    self.lookup(job, entry="state"),
+                    self.lookup(job, entry=entry),
                 )
 
         return table
@@ -249,7 +234,7 @@ class Scheduler(ABC):
                 if isinstance(result, Exception):
                     return result
             elif job.satisfy_status == "never":
-                raise DependencyNeverSatisfiedError(repr(job))
+                raise JobNeverSatisfiedError(repr(job))
             else:
                 raise ValueError(f"Unknown status '{job.satisfy_status}'.")
         finally:
@@ -275,23 +260,21 @@ class AsyncScheduler(Scheduler):
 
     backend: str = "async"
 
-    def __init__(self, name: str, pools: int | None = None) -> None:
+    def __init__(self, name: str, max_workers: int | None = 1) -> None:
         r"""
         Arguments:
             name: The name of the workflow.
-            pools: The number of processing pools. If `None`, use threads instead.
+            max_workers: The maximum number of parallel processes.
+                If `None`, use all CPU cores.
         """
 
         super().__init__(name=name)
 
-        self.pools = pools
+        self.max_workers = max_workers
 
     @contextmanager
     def context(self) -> Iterator[None]:
-        if self.pools is None:
-            self.executor = cf.ThreadPoolExecutor()
-        else:
-            self.executor = cf.ProcessPoolExecutor(self.pools)
+        self.executor = cf.ProcessPoolExecutor(max_workers=self.max_workers)
 
         try:
             yield None
@@ -317,7 +300,7 @@ class AsyncScheduler(Scheduler):
 
                 if isinstance(result, Exception):
                     if job.wait_mode == "all":
-                        raise DependencyNeverSatisfiedError(repr(job)) from result
+                        raise JobNeverSatisfiedError(repr(job)) from result
                 elif job.wait_mode == "any":
                     break
             else:
@@ -325,27 +308,34 @@ class AsyncScheduler(Scheduler):
             break
         else:
             if job.wait_mode == "any":
-                raise DependencyNeverSatisfiedError(repr(job))
+                raise JobNeverSatisfiedError(repr(job))
 
-    async def exec(self, job: Job) -> Any:
+    async def exec(self, job: Job) -> None:
         loop = asyncio.get_running_loop()
+
+        tag = self.tag(job)
+        logfile = self.path / f"{tag}.log"
 
         try:
             if isinstance(job, JobArray):
                 futures = [
-                    loop.run_in_executor(self.executor, runpickle, job[i].pkl)
+                    loop.run_in_executor(
+                        self.executor,
+                        partial(
+                            runpickle,
+                            job[i].pkl,
+                            logfile=str(logfile).replace(".log", f"_{i}.log"),
+                        ),
+                    )
                     for i in range(len(job))
                 ]
 
-                results = await asyncio.gather(*futures, return_exceptions=True)
-
-                for result in results:
-                    if isinstance(result, Exception):
-                        raise result
-
-                return results
+                await asyncio.gather(*futures)
             else:
-                return await loop.run_in_executor(self.executor, runpickle, job.pkl)
+                await loop.run_in_executor(
+                    self.executor,
+                    partial(runpickle, job.pkl, logfile=logfile),
+                )
         except Exception as e:
             raise JobFailedError(repr(job)) from e
 
@@ -365,16 +355,17 @@ class DummyScheduler(AsyncScheduler):
         print(f"END   {job!r}")
 
 
+SACCT_CACHE: dict[str, tuple[float, dict[str, str]]] = {}
+SACCT_TTL: float = 5.0  # seconds
+
+
 class SlurmScheduler(Scheduler):
     r"""Slurm scheduler.
 
     Jobs are submitted to the Slurm queue. Resources are allocated by the Slurm manager
-    according to the job and scheduler settings. Job settings have precendence over
-    scheduler settings.
-
-    Most settings (e.g. `account`, `export`, `partition`) are passed directly to
-    `sbatch`. A few settings (e.g. `cpus`, `gpus`, `ram`) are translated into their
-    `sbatch` equivalents.
+    according to the job settings. Most settings (e.g. `account`, `export`, `partition`)
+    are passed directly to `sbatch`. A few settings (e.g. `cpus`, `gpus`, `ram`) are
+    translated into their `sbatch` equivalents.
     """
 
     backend: str = "slurm"
@@ -389,17 +380,14 @@ class SlurmScheduler(Scheduler):
         "timeout": "time",
     }
 
-    def __init__(self, name: str) -> None:
-        r"""
-        Arguments:
-            name: The name of the workflow.
-        """
-
-        super().__init__(name=name)
-
     @staticmethod
-    @cache
     def sacct(jobid: str) -> dict[str, str]:
+        now = time.monotonic()
+        then, states = SACCT_CACHE.get(jobid, (float("-inf"), None))
+
+        if now < then + SACCT_TTL:
+            return states
+
         text = subprocess.run(
             ["sacct", "-j", jobid, "-o", "JobID,State", "-n", "-P", "-X"],
             capture_output=True,
@@ -407,7 +395,11 @@ class SlurmScheduler(Scheduler):
             text=True,
         ).stdout.strip("\n")
 
-        return dict(line.split("|") for line in text.splitlines())
+        states = dict(line.split("|") for line in text.splitlines())
+
+        SACCT_CACHE[jobid] = (now, states)
+
+        return states
 
     def state(self, job: Job, i: int | None = None) -> str:
         if job in self.traces:
@@ -424,27 +416,13 @@ class SlurmScheduler(Scheduler):
         else:
             return table.get(jobid, "UNKNOWN")
 
-    def output(self, job: Job, i: int | None = None) -> str | None:
-        tag = self.tag(job)
-
-        if isinstance(job, JobArray):
-            logfile = self.path / f"{tag}_{i}.log"
-        else:
-            logfile = self.path / f"{tag}.log"
-
-        if logfile.exists():
-            with open(logfile, newline="", errors="replace") as f:
-                return cat(f.read(), -1).strip("\n")
-        else:
-            return None
-
     def settings(self, job: Job, i: int | None = None) -> rich.syntax.Syntax | None:
         tag = self.tag(job)
         shfile = self.path / f"{tag}.sh"
 
         if shfile.exists():
             return rich.syntax.Syntax(
-                shfile.read_text(encoding="utf-8").strip("\n"),
+                shfile.read_text().strip("\n"),
                 lexer="sh",
                 theme=ANSITheme(),
             )
@@ -461,15 +439,13 @@ class SlurmScheduler(Scheduler):
             table.add_column("State", justify="left", no_wrap=True)
             table.add_column("ID", justify="right", no_wrap=True)
 
-            hl = StateHighlighter()
-
             for job, i in self.order.items():  # noqa: PLR1704
                 if job in self.traces:
                     jobid = None
                 else:
                     jobid = self.results[job]
 
-                table.add_row(str(i), str(job), hl(self.state(job)), jobid)
+                table.add_row(str(i), str(job), self.lookup(job, entry="state"), jobid)
         else:
             table = super().report(job, i, **kwargs)
 
@@ -498,7 +474,7 @@ class SlurmScheduler(Scheduler):
 
         for result in results:
             if isinstance(result, Exception):
-                raise DependencyNeverSatisfiedError(repr(job)) from result
+                raise JobNeverSatisfiedError(repr(job)) from result
 
     async def exec(self, job: Job) -> str:
         loop = asyncio.get_event_loop()
@@ -623,7 +599,7 @@ class CyclicDependencyGraphError(Exception):
     pass
 
 
-class DependencyNeverSatisfiedError(Exception):
+class JobNeverSatisfiedError(Exception):
     pass
 
 
@@ -637,3 +613,29 @@ class JobNotFailedError(Exception):
 
 class JobSubmissionError(Exception):
     pass
+
+
+class StateHighlighter(rich.highlighter.Highlighter):
+    STYLES = {
+        "PENDING": "dim",
+        "RUNNING": "cyan",
+        "COMPLETED": "green",
+        "FAILED": "red",
+        "CANCELLED": "dark_orange",
+        "UNKNOWN": "magenta",
+    }
+
+    def highlight(self, text: rich.text.Text) -> None:
+        for match in re.finditer(r"\w+", text.plain):
+            state, i, j = match.group(), match.start(), match.end()
+
+            if state in self.STYLES:
+                text.stylize(self.STYLES[state], i, j)
+
+
+class ANSITheme(rich.syntax.ANSISyntaxTheme):
+    def __init__(self) -> None:
+        super().__init__({
+            token: style + rich.style.Style(bold=False)
+            for token, style in rich.syntax.ANSI_DARK.items()
+        })

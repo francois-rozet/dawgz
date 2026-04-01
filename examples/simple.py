@@ -10,7 +10,7 @@ def a() -> None:
     print("a")
     time.sleep(3)
     print("a")
-    raise Exception()
+    raise RuntimeError("foo")
 
 
 @dawgz.job
@@ -43,4 +43,4 @@ if __name__ == "__main__":
     d_job = d().after(*c_jobs)
     e_job = e().after(a_job, d_job).waitfor("any")
 
-    dawgz.schedule(e_job, backend="async")
+    dawgz.schedule(e_job, backend="async", max_workers=4)
