@@ -133,7 +133,7 @@ class Scheduler(ABC):
         elif entry == "state":
             return StateHighlighter()(self.state(job, i))
         elif entry == "logs":
-            return rich.text.Text(self.logs(job, i))
+            return rich.text.Text(self.logs(job, i) or "")
         else:
             raise NotImplementedError(f"Unknown entry '{entry}'.")
 
@@ -410,7 +410,7 @@ class SlurmScheduler(Scheduler):
 
         if isinstance(job, JobArray):
             if i is None:
-                return ", ".join(sorted(set(table.values())))
+                return ",".join(sorted(set(table.values())))
             else:
                 return table.get(f"{jobid}_{i}", "PENDING")
         else:
