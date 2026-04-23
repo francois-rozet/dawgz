@@ -24,6 +24,11 @@ def failing(arg: str, kwarg: str) -> None:
     raise RuntimeError("intentional failure")
 
 
+@dawgz.job
+def echo(msg: str) -> None:
+    print(msg)
+
+
 ############
 # Fixtures #
 ############
@@ -37,7 +42,12 @@ def redirect_dawgz_dir(tmp_path: Path) -> None:
 @pytest.fixture()
 def dummy_workflow() -> dawgz.Scheduler:
     return dawgz.schedule(
-        noop(), failing("a", kwarg="k"), name="dummy", backend="async", quiet=True
+        noop(),
+        failing("a", kwarg="k"),
+        echo("[bracket] hello"),
+        name="dummy",
+        backend="async",
+        quiet=True,
     )
 
 
@@ -74,12 +84,14 @@ def test_main_workflow(
     assert "COMPLETED" in out
     assert "failing" in out
     assert "FAILED" in out
+    assert "echo" in out
+    assert "COMPLETED" in out
 
 
 def test_main_job(
     dummy_workflow: dawgz.Scheduler, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(sys, "argv", ["dawgz", "-1", "0"])
+    monkeypatch.setattr(sys, "argv", ["dawgz", "0", "0"])
     main()
     out = capsys.readouterr().out
     assert "noop" in out
@@ -90,7 +102,7 @@ def test_main_job(
 def test_main_job_failing(
     dummy_workflow: dawgz.Scheduler, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(sys, "argv", ["dawgz", "-1", "-1"])
+    monkeypatch.setattr(sys, "argv", ["dawgz", "-1", "1"])
     main()
     out = capsys.readouterr().out
     assert "failing" in out
@@ -101,7 +113,7 @@ def test_main_job_failing(
 def test_main_job_source(
     dummy_workflow: dawgz.Scheduler, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(sys, "argv", ["dawgz", "-1", "1", "--source"])
+    monkeypatch.setattr(sys, "argv", ["dawgz", "-1", "-2", "--source"])
     main()
     out = capsys.readouterr().out
     assert "failing" in out
@@ -112,12 +124,22 @@ def test_main_job_source(
 def test_main_job_input(
     dummy_workflow: dawgz.Scheduler, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(sys, "argv", ["dawgz", "-1", "1", "--input"])
+    monkeypatch.setattr(sys, "argv", ["dawgz", "0", "-2", "--input"])
     main()
     out = capsys.readouterr().out
     assert "failing" in out
     assert "FAILED" in out
     assert "failing('a', kwarg='k')" in out
+
+
+def test_main_job_logs_preserve_brackets(
+    dummy_workflow: dawgz.Scheduler, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["dawgz", "-1", "-1"])
+    main()
+    out = capsys.readouterr().out
+    assert "echo" in out
+    assert "[bracket] hello" in out
 
 
 def test_main_invalid_workflow_index(

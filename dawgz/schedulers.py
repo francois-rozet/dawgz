@@ -133,7 +133,7 @@ class Scheduler(ABC):
         elif entry == "state":
             return StateHighlighter()(self.state(job, i))
         elif entry == "logs":
-            return self.logs(job, i)
+            return rich.text.Text(self.logs(job, i))
         else:
             raise NotImplementedError(f"Unknown entry '{entry}'.")
 
