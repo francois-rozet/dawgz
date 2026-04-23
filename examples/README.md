@@ -29,17 +29,17 @@ RuntimeError: foo
 │    │ Job │ Error                                                                             │
 ├────┼─────┼───────────────────────────────────────────────────────────────────────────────────┤
 │  0 │ a   │ Traceback (most recent call last):                                                │
-│    │     │   File ".../dawgz/dawgz/utils.py", line 157, in runpickle │
+│    │     │   File ".../dawgz/dawgz/utils.py", line 157, in runpickle                         │
 │    │     │     pickle.loads(data)(*args, **kwargs)                                           │
 │    │     │     ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^                                           │
-│    │     │   File ".../dawgz/examples/simple.py", line 13, in a      │
+│    │     │   File ".../dawgz/examples/simple.py", line 13, in a                              │
 │    │     │     raise RuntimeError("foo")                                                     │
 │    │     │ RuntimeError: foo                                                                 │
 │    │     │                                                                                   │
 │    │     │ The above exception was the direct cause of the following exception:              │
 │    │     │                                                                                   │
 │    │     │ Traceback (most recent call last):                                                │
-│    │     │   File ".../dawgz/dawgz/schedulers.py", line 335, in exec │
+│    │     │   File ".../dawgz/dawgz/schedulers.py", line 335, in exec                         │
 │    │     │     await loop.run_in_executor(                                                   │
 │    │     │     ...<2 lines>...                                                               │
 │    │     │     )                                                                             │
@@ -48,7 +48,7 @@ RuntimeError: foo
 │    │     │ The above exception was the direct cause of the following exception:              │
 │    │     │                                                                                   │
 │    │     │ Traceback (most recent call last):                                                │
-│    │     │   File ".../dawgz/schedulers.py", line 340, in exec │
+│    │     │   File ".../dawgz/schedulers.py", line 340, in exec                               │
 │    │     │     raise JobFailedError(repr(job)) from e                                        │
 │    │     │ dawgz.schedulers.JobFailedError: a()                                              │
 ╰────┴─────┴───────────────────────────────────────────────────────────────────────────────────╯
