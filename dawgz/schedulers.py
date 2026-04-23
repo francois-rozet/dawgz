@@ -103,7 +103,7 @@ class Scheduler(ABC):
             logfile = self.path / f"{tag}.log"
 
         if logfile.exists():
-            return cat(logfile.read_text(errors="replace"), -1).strip("\n")
+            return cat(logfile.read_text(newline="", errors="replace"), -1).strip("\n")
         elif job in self.traces:
             return self.traces[job].strip("\n")
         else:
