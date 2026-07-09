@@ -134,7 +134,7 @@ def schedule(
         name: The worflow name. If `None`, use the caller's filename instead.
         quiet: Whether to display eventual job errors or not.
         kwargs: Keyword arguments passed to the scheduler's constructor. For example,
-            `max_workers` for the `async` backend.
+            `max_workers` (default to 1) for the `async` backend.
 
     Returns:
         The workflow scheduler.

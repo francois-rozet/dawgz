@@ -142,6 +142,17 @@ def test_main_job_logs_preserve_brackets(
     assert "[bracket] hello" in out
 
 
+def test_main_job_raw(
+    dummy_workflow: dawgz.Scheduler, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["dawgz", "0", "0", "--raw"])
+    main()
+    out = capsys.readouterr().out
+    assert "42" in out
+    assert "noop" not in out
+    assert "State" not in out
+
+
 def test_main_invalid_workflow_index(
     dummy_workflow: dawgz.Scheduler, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -6,6 +6,7 @@ import asyncio
 import csv
 import re
 import rich.box
+import rich.console
 import rich.highlighter
 import rich.style
 import rich.syntax
@@ -114,7 +115,7 @@ class Scheduler(ABC):
         i: int | None = None,
         *,
         entry: Literal["source", "settings", "input", "state", "logs"] = "logs",
-    ) -> str | rich.text.Text | None:
+    ) -> rich.console.RenderableType:
         if entry == "source":
             return rich.syntax.Syntax(
                 getattr(job if i is None else job[i], "source", ""),
@@ -139,7 +140,8 @@ class Scheduler(ABC):
         i: int | None = None,
         *,
         entry: Literal["source", "settings", "input", "logs"] = "logs",
-    ) -> rich.table.Table:
+        raw: bool = False,
+    ) -> list[rich.console.RenderableType]:
         table = rich.table.Table(box=rich.box.ROUNDED)
         table.add_column("", justify="right", no_wrap=True, min_width=2)
         table.add_column("Job", justify="left", no_wrap=True)
@@ -176,7 +178,10 @@ class Scheduler(ABC):
                     self.lookup(job, entry=entry),
                 )
 
-        return table
+            if raw:
+                return list(table.columns[3].cells)
+
+        return [table]
 
     def cancel(self, job: Job | int | None = None, i: int | None = None) -> str:
         raise NotImplementedError(f"'cancel' is not implemented for the '{self.backend}' backend.")

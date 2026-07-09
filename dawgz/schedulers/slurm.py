@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import rich.box
+import rich.console
 import rich.syntax
 import rich.table
 import subprocess
@@ -95,7 +96,7 @@ class SlurmScheduler(Scheduler):
 
     def report(
         self, job: Job | int | None = None, i: int | None = None, **kwargs
-    ) -> rich.table.Table:
+    ) -> list[rich.console.RenderableType]:
         if job is None:
             table = rich.table.Table(box=rich.box.ROUNDED)
             table.add_column("", justify="right", no_wrap=True, min_width=2)
@@ -110,10 +111,10 @@ class SlurmScheduler(Scheduler):
                     jobid = self.results[job]
 
                 table.add_row(str(i), str(job), self.lookup(job, entry="state"), jobid)
-        else:
-            table = super().report(job, i, **kwargs)
 
-        return table
+            return [table]
+        else:
+            return super().report(job, i, **kwargs)
 
     def cancel(self, job: Job | int | None = None, i: int | None = None) -> str:
         if job is None:
