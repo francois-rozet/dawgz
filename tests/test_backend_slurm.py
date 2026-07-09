@@ -290,5 +290,5 @@ def test_cancel() -> None:
     scheduler.cancel(job)
     assert scheduler.state(job) == "PENDING"
 
-    dawgz.schedulers.SACCT_CACHE.clear()
+    dawgz.schedulers.slurm.SACCT_CACHE.clear()
     assert scheduler.state(job) == "CANCELLED"

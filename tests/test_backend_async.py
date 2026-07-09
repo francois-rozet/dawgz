@@ -127,7 +127,7 @@ def test_cyclic_dependency() -> None:
     jobs[2].after(jobs[1])
     jobs[0].after(jobs[2])
 
-    with pytest.raises(dawgz.schedulers.CyclicDependencyGraphError):
+    with pytest.raises(dawgz.schedulers.core.CyclicDependencyGraphError):
         dawgz.schedule(*jobs, backend="async")
 
 
