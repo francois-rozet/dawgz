@@ -27,6 +27,7 @@ def report(
     job: int | None = None,
     i: int | None = None,
     entry: Literal["source", "settings", "input", "logs"] = "logs",
+    raw: bool = False,
 ) -> None:
     workflows = list_workflows()
 
@@ -42,18 +43,27 @@ def report(
 
         for j, row in enumerate(workflows):
             table.add_row(str(j), *row)
+
+        renderables = [table]
     else:
         row = workflows[workflow]
         uid = row[1]
         scheduler = Scheduler.load(get_dawgz_dir() / uid)
 
         if job is None:
-            table = scheduler.report()
+            renderables = scheduler.report()
         else:
-            table = scheduler.report(job, i, entry=entry)
+            renderables = scheduler.report(job, i, entry=entry, raw=raw)
+
+    if raw:
+        width = 1_000_000
+    else:
+        width = shutil.get_terminal_size(fallback=(1_000_000, 0)).columns
 
     try:
-        rich.console.Console(width=shutil.get_terminal_size((1_000_000, 0)).columns).print(table)
+        console = rich.console.Console(highlight=False, width=width)
+        for r in renderables:
+            console.print(r)
     except BrokenPipeError:
         pass
 
@@ -85,6 +95,7 @@ def main() -> None:
     parser.add_argument("workflow", default=None, nargs="?", type=int, help="workflow index")
     parser.add_argument("job", default=None, nargs="?", type=int, help="job index")
     parser.add_argument("i", default=None, nargs="?", type=int, help="job array index")
+    parser.add_argument("--raw", action="store_true", help="report job logs without table")
 
     group = parser.add_mutually_exclusive_group()
     group.add_argument(
@@ -106,7 +117,7 @@ def main() -> None:
     if args.cancel:
         cancel(args.workflow, args.job, args.i)
     else:
-        report(args.workflow, args.job, args.i, args.entry or "logs")
+        report(args.workflow, args.job, args.i, args.entry or "logs", args.raw)
 
 
 if __name__ == "__main__":
