@@ -154,19 +154,6 @@ See `dawgz --help` for the full option list.
     a_job = dawgz.job(a, name="A", time="01:00:00", partition="tesla,quadro")(3, 0.14)
     ```
 
-    Modifying global variables after a job has been created will not affect its execution. However, the content of Python modules is not captured, which means that modifying a module after a job has been submitted can affect its execution. If this becomes an issue for you, you can register your module such that it is pickled by value rather than by reference.
-
-    ```python
-    import cloudpickle
-    import my_module
-
-    cloudpickle.register_pickle_by_value(my_module)
-
-    @dawgz.job
-    def a():
-        my_module.my_function()
-    ```
-
     To declare that a job must wait for another one to complete, you can use the `dawgz.Job.after` method. By default, the job waits for its dependencies to complete with success. The desired completion status can be set to `"success"` (default), `"failure"` or `"any"`.
 
     ```python
@@ -193,6 +180,21 @@ See `dawgz --help` for the full option list.
         ...
     d_job = d().mark("success")
     ```
+
+    Modifying global variables after a job has been created will not affect its execution. However, the content of Python modules is not captured, which means that modifying a module after a job has been submitted can affect its execution. If this becomes an issue for you, you can register the module such that it is pickled by value rather than by reference upon job instantiation.
+
+    ```python
+    import cloudpickle
+    import my_module
+
+    cloudpickle.register_pickle_by_value(my_module)
+
+    @dawgz.job
+    def dummy():
+        my_module.my_function()  # does not break, even if `my_function` disappears
+    ```
+
+    However, this only works for pure Python modules and will lead to larger pickle files.
 
 * `dawgz.array` creates a job array from a group of independent jobs. The primary use case of job arrays is to schedule a large number of small jobs while throttling the number of simultaneously running jobs without saturating the Slurm queue. The returned object is itself a `dawgz.Job` instance and supports the methods presented above (`after`, `waitfor`, ...).
 
