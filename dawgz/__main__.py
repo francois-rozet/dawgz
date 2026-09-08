@@ -14,6 +14,28 @@ from dawgz import Scheduler, get_dawgz_dir
 from dawgz.schedulers.core import format_states
 from dawgz.utils import parse_timestamp
 
+DESCRIPTION = """\
+Inspect the workflows scheduled with DAWGZ.
+
+Without arguments, list the scheduled workflows. Give a workflow index to list its
+jobs, and a job index (optionally followed by a job array index) to report the output
+of that job. Indices are those displayed in the tables and can be negative.
+"""
+
+EXAMPLES = """\
+examples:
+  dawgz                     list the scheduled workflows
+  dawgz --since 3d          list the workflows submitted in the last 3 days
+  dawgz --fetch-states      list the workflows and the states of their jobs
+  dawgz 1                   list the jobs of workflow 1
+  dawgz -1                  list the jobs of the last workflow
+  dawgz 1 2                 report the logs of job 2 of workflow 1
+  dawgz 1 2 --raw           report the logs of job 2 without table
+  dawgz 1 2 3               report the logs of index 3 of job array 2
+  dawgz 1 2 --source        report the source of job 2 instead of its logs
+  dawgz 1 --cancel          cancel all the jobs of workflow 1
+"""
+
 
 def list_workflows() -> list[list[str]]:
     record = get_dawgz_dir() / "workflows.csv"
@@ -120,7 +142,11 @@ def cancel(
 
 def main() -> None:
     # Parser
-    parser = argparse.ArgumentParser(description="DAWGZ's CLI")
+    parser = argparse.ArgumentParser(
+        description=DESCRIPTION,
+        epilog=EXAMPLES,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
 
     parser.add_argument("workflow", default=None, nargs="?", type=int, help="workflow index")
     parser.add_argument("job", default=None, nargs="?", type=int, help="job index")

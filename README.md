@@ -84,7 +84,7 @@ $ dawgz
 │    │ Name  │ ID                       │ Date                │ Backend │ Jobs │ Errors │
 ├────┼───────┼──────────────────────────┼─────────────────────┼─────────┼──────┼────────┤
 │  0 │ pi.py │ handsome_jicama_bfc5a3e4 │ 2022-02-28 16:37:58 │ async   │    6 │      0 │
-│  1 │ pi.py │ crowded_machine_23bdd047 │ 2022-02-28 16:38:33 │ slurm   │    6 │      0 │
+│  1 │ pi.py │ crowded_machine_23bdd047 │ 2022-02-28 17:18:33 │ slurm   │    6 │      0 │
 ╰────┴───────┴──────────────────────────┴─────────────────────┴─────────┴──────┴────────╯
 $ dawgz 1
 ╭────┬──────────┬───────────┬─────────╮
@@ -105,12 +105,6 @@ $ dawgz 1 2
 ╰────┴──────────┴───────────┴────────╯
 $ dawgz 1 2 --raw
 Task 3
-$ dawgz 1 2 --input
-╭────┬──────────┬───────────┬─────────────╮
-│    │ Job      │ State     │ Input       │
-├────┼──────────┼───────────┼─────────────┤
-│  2 │ generate │ COMPLETED │ generate(2) │
-╰────┴──────────┴───────────┴─────────────╯
 $ dawgz 1 2 --source
 ╭────┬──────────┬───────────┬────────────────────────────────────────────╮
 │    │ Job      │ State     │ Source                                     │
@@ -125,6 +119,18 @@ $ dawgz 1 2 --source
 │    │          │           │                                            │
 │    │          │           │     np.save(f"pi_{i}.npy", within_circle)  │
 ╰────┴──────────┴───────────┴────────────────────────────────────────────╯
+```
+
+By default, `dawgz` stores the workflow files and logs in a `.dawgz` directory within the current working directory. Therefore, workflows are only visible to the `dawgz` command when it is executed at the location they were scheduled from. Setting the `DAWGZ_DIR` environment variable to a global path, such as `~/.dawgz`, stores all files at the same place regardless of the current working directory, enabling `dawgz` to be called from anywhere.
+
+```bash
+export DAWGZ_DIR=~/.dawgz
+```
+
+If [uv](https://github.com/astral-sh/uv) is installed, `uvx dawgz` runs the CLI without creating or activating any virtual environment. This is especially convenient for coding agents, in combination with the `--raw` flag to inspect job logs.
+
+```
+$ uvx dawgz --help
 ```
 
 See `dawgz --help` for the full option list.
@@ -191,10 +197,10 @@ See `dawgz --help` for the full option list.
     e_array = dawgz.array(*e_jobs, throttle=3)
     e_array.after(d_job)
 
-    dawgz.schedule(e_array, backend="slurm")
+    dawgz.schedule(e_array, name="the answer is 42", backend="slurm")
     ```
 
-* `dawgz.schedule` schedules a set of jobs, along their dependencies. Three backends are currently supported: `async`, `dummy` and `slurm`.
+* `dawgz.schedule` schedules a set of jobs, as well as their pending dependencies. Three backends are currently supported: `async`, `dummy` and `slurm`.
 
     1. `async` waits asynchronously for dependencies to complete before executing each job. The jobs are executed by the current Python interpreter.
     2. `dummy` is equivalent to `async`, but instead of executing the jobs, prints their name before and after a short (random) sleep time. The main use of `dummy` is debugging.
