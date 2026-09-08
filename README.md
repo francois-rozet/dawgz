@@ -137,7 +137,7 @@ See `dawgz --help` for the full option list.
 
 ## Interface
 
-* `dawgz.job` registers a function as a job, with its settings (name, resources, ...). In the following example, `a` is a job with the name `"A"`, a time limit of one hour, and running on `tesla` or `quadro` partitions.
+* `dawgz.job` registers a function as a job, with its settings (name, resources, ...). When the wrapped function is called, its context and arguments are captured in a `dawgz.Job` instance for later execution. In the following example, `a` is a job with the name `"A"`, a time limit of one hour, and running on `tesla` or `quadro` partitions. `a_job` is an instance of `a`, with inputs `3` and `0.14`, but hasn't been executed yet.
 
     ```python
     @dawgz.job(name="A", time="01:00:00", partition="tesla,quadro")
@@ -146,7 +146,15 @@ See `dawgz --help` for the full option list.
     a_job = a(3, 0.14)
     ```
 
-    When the decorated function is called, its context and arguments are captured in a `dawgz.Job` instance for later execution. Modifying global variables after it has been created will not affect its execution. However, the content of Python modules is not captured, which means that modifying a module after a job has been submitted can affect its execution. If this becomes an issue for you, you can register your module such that it is pickled by value rather than by reference.
+    If the decorator syntax doesn't suit your needs, you can equivalently use `dawgz.job` as a function.
+
+    ```python
+    def a(n: int, x: float):
+        ...
+    a_job = dawgz.job(a, name="A", time="01:00:00", partition="tesla,quadro")(3, 0.14)
+    ```
+
+    Modifying global variables after a job has been created will not affect its execution. However, the content of Python modules is not captured, which means that modifying a module after a job has been submitted can affect its execution. If this becomes an issue for you, you can register your module such that it is pickled by value rather than by reference.
 
     ```python
     import cloudpickle
