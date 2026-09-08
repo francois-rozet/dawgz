@@ -10,6 +10,8 @@ import rich.table
 import subprocess
 import time
 
+from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from .core import (
@@ -66,18 +68,19 @@ class SlurmScheduler(Scheduler):
 
         return states
 
-    def state(self, job: Job, i: int | None = None) -> str:
-        if job in self.traces:
+    def state(self, job: Job | None = None, i: int | None = None) -> Counter[str] | str:
+        if job is None:
+            return super().state()
+        elif isinstance(job, JobArray) and i is None:
+            return super().state(job)
+        elif job in self.traces:
             return "CANCELLED"
 
         jobid = self.results[job]
         table = self.sacct(jobid)
 
         if isinstance(job, JobArray):
-            if i is None:
-                return ",".join(sorted(set(table.values())))
-            else:
-                return table.get(f"{jobid}_{i}", "PENDING")
+            return table.get(f"{jobid}_{i}", "PENDING")
         else:
             return table.get(jobid, "UNKNOWN")
 
@@ -104,13 +107,17 @@ class SlurmScheduler(Scheduler):
             table.add_column("State", justify="left", no_wrap=True)
             table.add_column("ID", justify="right", no_wrap=True)
 
-            for job, i in self.order.items():  # noqa: PLR1704
+            with ThreadPoolExecutor() as executor:
+                states = executor.map(lambda job: self.lookup(job, entry="state"), self.order)
+                states = list(states)
+
+            for (job, i), state in zip(self.order.items(), states, strict=True):  # noqa: PLR1704
                 if job in self.traces:
                     jobid = None
                 else:
                     jobid = self.results[job]
 
-                table.add_row(str(i), str(job), self.lookup(job, entry="state"), jobid)
+                table.add_row(str(i), str(job), state, jobid)
 
             return [table]
         else:

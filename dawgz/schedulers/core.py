@@ -14,7 +14,9 @@ import rich.table
 import rich.text
 
 from abc import ABC, abstractmethod
+from collections import Counter
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -79,8 +81,24 @@ class Scheduler(ABC):
 
         return f"{i:04d}_{slugify(job.name)}"
 
-    def state(self, job: Job, i: int | None = None) -> str:
-        if job in self.traces:
+    def state(self, job: Job | None = None, i: int | None = None) -> Counter[str] | str:
+        r"""Returns the state(s) of one or several jobs.
+
+        The result is a counter of states if `job` is `None` or a job array without an index, and a single state otherwise.
+        """
+
+        if job is None:
+            states = Counter()
+            with ThreadPoolExecutor() as executor:
+                for state in executor.map(self.state, self.order):
+                    if isinstance(state, Counter):
+                        states.update(state)
+                    else:
+                        states.update([state])
+            return states
+        elif isinstance(job, JobArray) and i is None:
+            return Counter(self.state(job, j) for j in range(len(job)))
+        elif job in self.traces:
             if "JobNeverSatisfiedError" in self.traces[job]:
                 return "CANCELLED"
             else:
@@ -128,7 +146,7 @@ class Scheduler(ABC):
         elif entry == "input":
             return repr(job if i is None else job[i])
         elif entry == "state":
-            return StateHighlighter()(self.state(job, i))
+            return format_states(self.state(job, i))
         elif entry == "logs":
             return rich.text.Text(self.logs(job, i) or "")
         else:
@@ -272,6 +290,17 @@ class JobSubmissionError(Exception):
     pass
 
 
+def format_states(states: Counter[str] | str) -> rich.text.Text:
+    r"""Formats the state(s) of one or several jobs as text."""
+
+    if isinstance(states, str):
+        text = states
+    else:
+        text = ", ".join(f"{count} {state}" for state, count in states.most_common())
+
+    return StateHighlighter()(text)
+
+
 class StateHighlighter(rich.highlighter.Highlighter):
     STYLES = {
         "PENDING": "dim",
@@ -285,9 +314,10 @@ class StateHighlighter(rich.highlighter.Highlighter):
     def highlight(self, text: rich.text.Text) -> None:
         for match in re.finditer(r"\w+", text.plain):
             state, i, j = match.group(), match.start(), match.end()
+            style = self.STYLES.get(state)
 
-            if state in self.STYLES:
-                text.stylize(self.STYLES[state], i, j)
+            if style:
+                text.stylize(style, i, j)
 
 
 class ANSITheme(rich.syntax.ANSISyntaxTheme):

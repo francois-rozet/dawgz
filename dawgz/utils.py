@@ -10,12 +10,26 @@ import sys
 import traceback
 import uuid
 
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import IO, Any, overload
 from wonderwords import RandomWord
 
 BYTES_HEADER = b"BYTES_LIST"
 BYTES_U64 = struct.Struct("<Q")
+
+DURATION_PATTERN = re.compile(
+    "".join(
+        rf"(?:(?P<{unit}>\d+){u})?"
+        for u, unit in [
+            ("w", "weeks"),
+            ("d", "days"),
+            ("h", "hours"),
+            ("m", "minutes"),
+            ("s", "seconds"),
+        ]
+    )
+)
 
 
 def as_scalar(x: Any) -> bool | int | float | str:
@@ -143,6 +157,42 @@ def human_uuid() -> str:
     hex = uuid.uuid4().hex[:8]
 
     return f"{adjective}_{noun}_{hex}"
+
+
+def parse_duration(text: str) -> timedelta:
+    r"""Parses a duration string as a time delta.
+
+    A duration is a sequence of quantity-unit pairs, from the largest unit to
+    the smallest, where the unit is one of `w` (weeks), `d` (days), `h` (hours), `m`
+    (minutes) or `s` (seconds). For example, `"1w"`, `"36h"` and `"1w2d5h10m"` are
+    valid durations.
+    """
+
+    match = DURATION_PATTERN.fullmatch(text)
+    if match is None:
+        raise ValueError(f"Invalid duration '{text}'.")
+
+    kwargs = {unit: int(qty) for unit, qty in match.groupdict().items() if qty}
+    if not kwargs:
+        raise ValueError(f"Invalid duration '{text}'.")
+
+    return timedelta(**kwargs)
+
+
+def parse_timestamp(text: str) -> datetime | timedelta:
+    r"""Parses a timestamp as either an absolute date-time or a relative time delta."""
+
+    try:
+        return parse_duration(text)
+    except ValueError:
+        pass
+
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError:
+        pass
+
+    raise ValueError(f"Invalid date-time or duration '{text}'.")
 
 
 def runpickle(

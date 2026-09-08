@@ -231,7 +231,8 @@ def test_array() -> None:
 
     scheduler = dawgz.schedule(array, backend="async")
 
-    assert scheduler.state(array) == "COMPLETED"
+    assert scheduler.state(array) == {"COMPLETED": 3}
+    assert scheduler.state(array, 0) == "COMPLETED"
 
     for i, x in enumerate(xs):
         assert scheduler.logs(array, i) == repr(x)
@@ -244,7 +245,7 @@ def test_array_one_fails() -> None:
 
     scheduler = dawgz.schedule(array, backend="async")
 
-    assert scheduler.state(array) == "FAILED"
+    assert scheduler.state(array) == {"FAILED": 4}
 
     for i, x in enumerate(xs):
         assert scheduler.logs(array, i) == repr(x)
@@ -260,7 +261,7 @@ def test_triggered_by_array() -> None:
 
     scheduler = dawgz.schedule(y_job, backend="async")
 
-    assert scheduler.state(array) == "COMPLETED"
+    assert scheduler.state(array) == {"COMPLETED": 3}
     assert scheduler.logs(y_job) == "'y'"
     assert scheduler.state(y_job) == "COMPLETED"
 
@@ -273,6 +274,6 @@ def test_blocked_by_failed_array() -> None:
 
     scheduler = dawgz.schedule(y_job, backend="async")
 
-    assert scheduler.state(array) == "FAILED"
+    assert scheduler.state(array) == {"FAILED": 4}
     assert "JobNeverSatisfiedError" in scheduler.logs(y_job)
     assert scheduler.state(y_job) == "CANCELLED"

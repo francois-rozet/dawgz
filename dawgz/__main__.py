@@ -7,9 +7,12 @@ import rich.console
 import rich.table
 import shutil
 
+from datetime import datetime, timedelta
 from typing import Literal
 
 from dawgz import Scheduler, get_dawgz_dir
+from dawgz.schedulers.core import format_states
+from dawgz.utils import parse_timestamp
 
 
 def list_workflows() -> list[list[str]]:
@@ -28,8 +31,17 @@ def report(
     i: int | None = None,
     entry: Literal["source", "settings", "input", "logs"] = "logs",
     raw: bool = False,
+    since: datetime | timedelta | None = None,
+    before: datetime | timedelta | None = None,
+    fetch_states: bool = False,
 ) -> None:
     workflows = list_workflows()
+
+    now = datetime.now()
+    if isinstance(since, timedelta):
+        since = now - since
+    if isinstance(before, timedelta):
+        before = now - before
 
     if workflow is None:
         table = rich.table.Table(box=rich.box.ROUNDED)
@@ -41,13 +53,31 @@ def report(
         table.add_column("Jobs", justify="right", no_wrap=True)
         table.add_column("Errors", justify="right", no_wrap=True)
 
+        if fetch_states:
+            table.add_column("States", justify="left", no_wrap=True)
+
         for j, row in enumerate(workflows):
-            table.add_row(str(j), *row)
+            _, uid, submitted, *_ = row
+
+            submitted = datetime.fromisoformat(submitted)
+            if since is not None and submitted < since:
+                continue
+            if before is not None and submitted >= before:
+                continue
+
+            if fetch_states:
+                try:
+                    states = Scheduler.load(get_dawgz_dir() / uid).state()
+                except Exception:
+                    states = "UNKNOWN"
+
+                table.add_row(str(j), *row, format_states(states))
+            else:
+                table.add_row(str(j), *row)
 
         renderables = [table]
     else:
-        row = workflows[workflow]
-        uid = row[1]
+        _, uid, *_ = workflows[workflow]
         scheduler = Scheduler.load(get_dawgz_dir() / uid)
 
         if job is None:
@@ -96,8 +126,26 @@ def main() -> None:
     parser.add_argument("job", default=None, nargs="?", type=int, help="job index")
     parser.add_argument("i", default=None, nargs="?", type=int, help="job array index")
     parser.add_argument("--raw", action="store_true", help="report job logs without table")
+    parser.add_argument(
+        "--since",
+        type=parse_timestamp,
+        metavar="TIMESTAMP",
+        help="list workflows submitted on or after this date-time or duration ago",
+    )
+    parser.add_argument(
+        "--before",
+        type=parse_timestamp,
+        metavar="TIMESTAMP",
+        help="list workflows submitted before this date-time or duration ago",
+    )
+    parser.add_argument(
+        "--fetch-states",
+        action="store_true",
+        help="fetch and report the job states of each workflow",
+    )
 
     group = parser.add_mutually_exclusive_group()
+    group.set_defaults(entry="logs")
     group.add_argument(
         "-c", "--cancel", default=False, action="store_true", help="cancel workflow or job"
     )
@@ -117,7 +165,16 @@ def main() -> None:
     if args.cancel:
         cancel(args.workflow, args.job, args.i)
     else:
-        report(args.workflow, args.job, args.i, args.entry or "logs", args.raw)
+        report(
+            args.workflow,
+            args.job,
+            args.i,
+            args.entry,
+            args.raw,
+            args.since,
+            args.before,
+            args.fetch_states,
+        )
 
 
 if __name__ == "__main__":

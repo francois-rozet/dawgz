@@ -4,9 +4,11 @@ import os
 import pytest
 import re
 import subprocess
+import threading
 
 from collections.abc import Generator
 from pathlib import Path
+from time import sleep
 from unittest.mock import MagicMock, patch
 
 import dawgz
@@ -292,3 +294,47 @@ def test_cancel() -> None:
 
     dawgz.schedulers.slurm.SACCT_CACHE.clear()
     assert scheduler.state(job) == "CANCELLED"
+
+
+def test_report_fetches_states_in_parallel() -> None:
+    a_job = echo("a")
+    b_job = echo("b")
+    scheduler = dawgz.schedule(a_job, b_job, backend="slurm")
+
+    active = 0
+    max_active = 0
+    lock = threading.Lock()
+
+    def sacct(jobid: str) -> dict[str, str]:
+        nonlocal active, max_active
+
+        with lock:
+            active += 1
+            max_active = max(max_active, active)
+
+        sleep(0.05)
+
+        with lock:
+            active -= 1
+
+        return {jobid: "PENDING"}
+
+    with patch.object(dawgz.schedulers.slurm.SlurmScheduler, "sacct", side_effect=sacct):
+        scheduler.report()
+
+    assert max_active == 2
+
+
+def test_state_array_states(squeue: dict[str, str]) -> None:
+    array = dawgz.array(echo("a"), echo("b"), echo("c"))
+    scheduler = dawgz.schedule(array, backend="slurm")
+    jobid = scheduler.results[array]
+
+    squeue[f"{jobid}_0"] = "PENDING"
+    squeue[f"{jobid}_1"] = "RUNNING"
+    squeue[f"{jobid}_2"] = "RUNNING"
+    dawgz.schedulers.slurm.SACCT_CACHE.clear()
+
+    assert scheduler.state() == {"PENDING": 1, "RUNNING": 2}
+    assert scheduler.state(array) == {"PENDING": 1, "RUNNING": 2}
+    assert scheduler.state(array, 1) == "RUNNING"

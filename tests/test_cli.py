@@ -3,6 +3,7 @@
 import pytest
 import sys
 
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import dawgz
@@ -74,6 +75,88 @@ def test_main_workflows(
     assert "async" in out
 
 
+def test_main_workflows_date_filter(
+    capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "dawgz.__main__.list_workflows",
+        lambda: [
+            ["before", "id-1", "2025-01-01 12:00:00", "async", "1", "0"],
+            ["matching", "id-2", "2025-01-02 00:00:00", "async", "1", "0"],
+            ["after", "id-3", "2025-01-03 00:00:00", "async", "1", "0"],
+        ],
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "dawgz",
+            "--since",
+            "2025-01-02",
+            "--before",
+            "2025-01-03",
+        ],
+    )
+
+    main()
+
+    out = capsys.readouterr().out
+    assert "matching" in out
+    assert "before" not in out
+    assert "after" not in out
+
+
+def test_main_workflows_relative_date_filter(
+    capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = datetime.now()
+
+    monkeypatch.setattr(
+        "dawgz.__main__.list_workflows",
+        lambda: [
+            ["old", "id-1", str(now - timedelta(days=10)), "async", "1", "0"],
+            ["recent", "id-2", str(now - timedelta(days=2)), "async", "1", "0"],
+            ["fresh", "id-3", str(now - timedelta(minutes=30)), "async", "1", "0"],
+        ],
+    )
+    monkeypatch.setattr(sys, "argv", ["dawgz", "--since", "3d", "--before", "1h"])
+
+    main()
+
+    out = capsys.readouterr().out
+    assert "recent" in out
+    assert "old" not in out
+    assert "fresh" not in out
+
+
+def test_main_workflows_mixed_absolute_and_relative(
+    capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = datetime.now()
+
+    monkeypatch.setattr(
+        "dawgz.__main__.list_workflows",
+        lambda: [
+            ["ancient", "id-1", "2020-01-01 00:00:00", "async", "1", "0"],
+            ["recent", "id-2", str(now - timedelta(days=1)), "async", "1", "0"],
+        ],
+    )
+    monkeypatch.setattr(sys, "argv", ["dawgz", "--since", "2020-01-02", "--before", "0h"])
+
+    main()
+
+    out = capsys.readouterr().out
+    assert "recent" in out
+    assert "ancient" not in out
+
+
+def test_main_workflows_invalid_timestamp(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, "argv", ["dawgz", "--since", "yesterday"])
+
+    with pytest.raises(SystemExit):
+        main()
+
+
 def test_main_workflow(
     dummy_workflow: dawgz.Scheduler, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -86,6 +169,71 @@ def test_main_workflow(
     assert "FAILED" in out
     assert "echo" in out
     assert "COMPLETED" in out
+
+
+def test_main_workflows_states_counts_arrays(
+    capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    @dawgz.job
+    def fan(i: int) -> None:
+        print(i)
+
+    array = dawgz.array(fan(0), fan(1), fan(2), name="fan")
+    scheduler = dawgz.schedule(noop(), array, name="arrays", backend="dummy", quiet=True)
+
+    monkeypatch.setattr(sys, "argv", ["dawgz", "--fetch-states"])
+    main()
+    out = capsys.readouterr().out
+
+    # 2 jobs, but 4 states (the array counts once per index)
+    assert "arrays" in out
+    assert scheduler.state()["COMPLETED"] == 4
+    assert "4 COMPLETED" in out
+
+
+def test_main_workflows_states(
+    dummy_workflow: dawgz.Scheduler, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["dawgz", "--fetch-states"])
+    main()
+    out = capsys.readouterr().out
+
+    assert "States" in out
+    assert "2 COMPLETED" in out
+    assert "1 FAILED" in out
+
+
+def test_main_workflows_without_states_flag(
+    dummy_workflow: dawgz.Scheduler, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["dawgz"])
+    main()
+    out = capsys.readouterr().out
+
+    assert "States" not in out
+    assert "COMPLETED" not in out
+
+
+def test_main_workflows_states_respects_date_filter(
+    dummy_workflow: dawgz.Scheduler, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["dawgz", "--since", "2100-01-01", "--fetch-states"])
+
+    main()
+
+    out = capsys.readouterr().out
+    assert "States" in out
+    assert dummy_workflow.uid not in out
+
+
+def test_main_workflow_has_no_workflow_table(
+    dummy_workflow: dawgz.Scheduler, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["dawgz", "0"])
+    main()
+    out = capsys.readouterr().out
+
+    assert dummy_workflow.uid not in out
 
 
 def test_main_job(

@@ -127,6 +127,8 @@ $ dawgz 1 2 --source
 ╰────┴──────────┴───────────┴────────────────────────────────────────────╯
 ```
 
+See `dawgz --help` for the full option list.
+
 ## Interface
 
 * `dawgz.job` registers a function as a job, with its settings (name, resources, ...). In the following example, `a` is a job with the name `"A"`, a time limit of one hour, and running on `tesla` or `quadro` partitions.

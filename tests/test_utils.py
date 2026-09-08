@@ -2,7 +2,9 @@
 
 import pytest
 
-from dawgz.utils import cat
+from datetime import datetime, timedelta
+
+from dawgz.utils import cat, parse_duration, parse_timestamp
 
 
 @pytest.mark.parametrize(
@@ -24,3 +26,68 @@ from dawgz.utils import cat
 )
 def test_cat(text: str, width: int, expected: str) -> None:
     assert cat(text, width) == expected
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("1w", timedelta(weeks=1)),
+        ("3d", timedelta(days=3)),
+        ("36h", timedelta(hours=36)),
+        ("90m", timedelta(minutes=90)),
+        ("30s", timedelta(seconds=30)),
+        ("0h", timedelta()),
+        ("2d12h", timedelta(days=2, hours=12)),
+        ("1w10m", timedelta(weeks=1, minutes=10)),
+        ("1w2d5h10m3s", timedelta(weeks=1, days=2, hours=5, minutes=10, seconds=3)),
+    ],
+)
+def test_parse_duration(text: str, expected: timedelta) -> None:
+    assert parse_duration(text) == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "1",  # no unit
+        "w",  # no amount
+        "1h5",  # trailing amount
+        "abc",
+        "1y",  # years and months are not supported
+        "1M",  # units are case-sensitive
+        "1.5h",  # amounts are integers
+        "-1h",  # amounts are non-negative
+        "1h 1h",  # duplicate unit
+        "1m1m",
+        "2d1w",  # units must go from largest to smallest
+        "1w 2d",  # pairs are not separated
+        "1w_2d",
+        "  1w",  # no surrounding whitespace
+        "1w ",
+        "1 w",  # no gap between an amount and its unit
+        "1_w",
+        "",  # no amount-unit pair at all
+        "   ",
+    ],
+)
+def test_parse_duration_invalid(text: str) -> None:
+    with pytest.raises(ValueError, match="Invalid duration"):
+        parse_duration(text)
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("2025-01-02", datetime(2025, 1, 2)),
+        ("2025-01-02 03:04:05", datetime(2025, 1, 2, 3, 4, 5)),
+        ("1w", timedelta(weeks=1)),
+        ("1w2d5h10m3s", timedelta(weeks=1, days=2, hours=5, minutes=10, seconds=3)),
+    ],
+)
+def test_parse_timestamp(text: str, expected: datetime | timedelta) -> None:
+    assert parse_timestamp(text) == expected
+
+
+def test_parse_timestamp_invalid() -> None:
+    with pytest.raises(ValueError, match="Invalid date-time or duration"):
+        parse_timestamp("yesterday")
