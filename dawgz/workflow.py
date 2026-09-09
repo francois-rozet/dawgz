@@ -6,6 +6,7 @@ import inspect
 
 from collections.abc import Callable, Iterator, Sequence
 from functools import partial
+from pathlib import Path
 from rich.pretty import pretty_repr
 from textwrap import dedent, indent
 from typing import (
@@ -14,7 +15,7 @@ from typing import (
     TypeVar,
 )
 
-from .utils import pickle
+from .utils import as_scalar, pickle
 
 
 class Node:
@@ -49,10 +50,10 @@ class Job(Node):
         kwargs: dict[str, Any] = {},  # noqa: B006
         *,
         name: str | None = None,
-        shell: str = "/bin/bash",
-        interpreter: str = "python",
+        shell: str | Path = "/bin/bash",
+        interpreter: str | Path = "python",
         env: list[str] | None = None,
-        settings: dict[str, Any] = {},  # noqa: B006
+        settings: dict[str, int | float | bool | str] | None = None,
     ) -> None:
         super().__init__()
 
@@ -85,10 +86,18 @@ class Job(Node):
             self.source = ""
 
         # Settings
-        self.shell = shell
-        self.interpreter = interpreter
-        self.env = env
-        self.settings = settings
+        self.shell = str(shell)
+        self.interpreter = str(interpreter)
+
+        if env:
+            self.env = [str(cmd) for cmd in env]
+        else:
+            self.env = []
+
+        if settings:
+            self.settings = {str(k): as_scalar(v) for k, v in settings.items()}
+        else:
+            self.settings = {}
 
         # Status
         self.status: str = "pending"

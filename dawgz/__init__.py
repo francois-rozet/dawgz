@@ -10,6 +10,7 @@ import shutil
 
 from collections.abc import Callable
 from functools import partial, wraps
+from pathlib import Path
 from typing import Any, Literal, ParamSpec, overload
 
 import __main__
@@ -51,10 +52,10 @@ def job(
     /,
     *,
     name: str | None = None,
-    shell: str = "/bin/bash",
-    interpreter: str = "python",
+    shell: str | Path = "/bin/bash",
+    interpreter: str | Path = "python",
     env: list[str] | None = None,
-    settings: dict[str, Any] = {},  # noqa: B006
+    settings: dict[str, int | float | bool | str] = {},  # noqa: B006
     **kwargs,
 ) -> Callable[P, Job] | Callable[[Callable[P, Any]], Callable[P, Job]]:
     r"""Decorator to capture the arguments of a function for later execution.

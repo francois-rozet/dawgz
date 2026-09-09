@@ -18,6 +18,16 @@ BYTES_HEADER = b"BYTES_LIST"
 BYTES_U64 = struct.Struct("<Q")
 
 
+def as_scalar(x: Any) -> bool | int | float | str:
+    r"""Casts a value to a built-in scalar type."""
+
+    for T in (bool, int, float, str):
+        if isinstance(x, T):
+            return T(x)
+
+    return str(x)
+
+
 def bytes_dump(file: IO[bytes], items: list[bytes]) -> None:
     r"""Writes a list of bytes to a file."""
 
