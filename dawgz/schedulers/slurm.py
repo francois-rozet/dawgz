@@ -167,7 +167,12 @@ class SlurmScheduler(Scheduler):
         lines.append("#")
 
         ## Settings
-        settings = {self.translate.get(k, k).replace("_", "-"): v for k, v in job.settings.items()}
+        if job.settings:
+            settings = {
+                self.translate.get(k, k).replace("_", "-"): v for k, v in job.settings.items()
+            }
+        else:
+            settings = {}
 
         assert "clusters" not in settings, "multi-cluster jobs not supported"
 
