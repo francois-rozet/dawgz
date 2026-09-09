@@ -4,11 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import csv
-import re
 import rich.box
 import rich.console
-import rich.highlighter
-import rich.style
 import rich.syntax
 import rich.table
 import rich.text
@@ -23,7 +20,8 @@ from pathlib import Path
 from typing import Any, Literal
 
 from ..constants import get_dawgz_dir
-from ..utils import cat, future, human_uuid, pickle, slugify, trace
+from ..render import ANSITheme, format_states
+from ..utils import at, cat, future, human_uuid, pickle, slugify, trace
 from ..workflow import Job, JobArray, cycles, prune
 
 
@@ -172,13 +170,13 @@ class Scheduler(ABC):
             table.add_column(entry.capitalize(), justify="left", no_wrap=False)
 
             if isinstance(job, int):
-                job = list(self.order)[job]
+                job = at(list(self.order), job, "job")
 
             if isinstance(job, JobArray):
                 if i is None:
                     indices = range(len(job))
                 else:
-                    indices = [i % len(job)]
+                    indices = [at(range(len(job)), i, "job array")]
 
                 for j in indices:
                     table.add_row(
@@ -288,41 +286,3 @@ class JobNotFailedError(Exception):
 
 class JobSubmissionError(Exception):
     pass
-
-
-def format_states(states: Counter[str] | str) -> rich.text.Text:
-    r"""Formats the state(s) of one or several jobs as text."""
-
-    if isinstance(states, str):
-        text = states
-    else:
-        text = ", ".join(f"{count} {state}" for state, count in states.most_common())
-
-    return StateHighlighter()(text)
-
-
-class StateHighlighter(rich.highlighter.Highlighter):
-    STYLES = {
-        "PENDING": "dim",
-        "RUNNING": "cyan",
-        "COMPLETED": "green",
-        "FAILED": "red",
-        "CANCELLED": "dark_orange",
-        "UNKNOWN": "magenta",
-    }
-
-    def highlight(self, text: rich.text.Text) -> None:
-        for match in re.finditer(r"\w+", text.plain):
-            state, i, j = match.group(), match.start(), match.end()
-            style = self.STYLES.get(state)
-
-            if style:
-                text.stylize(style, i, j)
-
-
-class ANSITheme(rich.syntax.ANSISyntaxTheme):
-    def __init__(self) -> None:
-        super().__init__({
-            token: style + rich.style.Style(bold=False)
-            for token, style in rich.syntax.ANSI_DARK.items()
-        })

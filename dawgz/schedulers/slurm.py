@@ -15,11 +15,12 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from .core import (
-    ANSITheme,
     JobNeverSatisfiedError,
     JobSubmissionError,
     Scheduler,
 )
+from ..render import ANSITheme
+from ..utils import at
 from ..workflow import Job, JobArray
 
 SACCT_CACHE: dict[str, tuple[float, dict[str, str]]] = {}
@@ -128,10 +129,12 @@ class SlurmScheduler(Scheduler):
             jobids = list(self.results.values())
         else:
             if isinstance(job, int):
-                job = list(self.order)[job]
+                job = at(list(self.order), job, "job")
+
             jobid = self.results[job]
             if i is not None:  # noop if job is not array
-                jobid = f"{jobid}_{i}"
+                jobid = f"{jobid}_{at(range(len(job)), i, 'job array')}"
+
             jobids = [jobid]
 
         return subprocess.run(

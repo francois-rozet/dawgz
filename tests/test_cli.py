@@ -305,7 +305,7 @@ def test_main_invalid_workflow_index(
     dummy_workflow: dawgz.Scheduler, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(sys, "argv", ["dawgz", "99"])
-    with pytest.raises(IndexError):
+    with pytest.raises(SystemExit, match="Workflow index 99 is out of range"):
         main()
 
 
@@ -313,5 +313,98 @@ def test_main_invalid_job_index(
     dummy_workflow: dawgz.Scheduler, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(sys, "argv", ["dawgz", "0", "99"])
-    with pytest.raises(IndexError):
+    with pytest.raises(SystemExit, match="Job index 99 is out of range"):
+        main()
+
+
+def test_main_invalid_workflow_index_negative(
+    dummy_workflow: dawgz.Scheduler, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["dawgz", "-99"])
+    with pytest.raises(SystemExit, match="Expected an index between -1 and 0"):
+        main()
+
+
+def test_main_invalid_job_index_negative(
+    dummy_workflow: dawgz.Scheduler, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["dawgz", "0", "-99"])
+    with pytest.raises(SystemExit, match="Expected an index between -3 and 2"):
+        main()
+
+
+def test_main_valid_negative_indices_still_work(
+    dummy_workflow: dawgz.Scheduler, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["dawgz", "-1", "-1"])
+
+    main()
+
+    out = capsys.readouterr().out
+    assert "echo" in out
+
+
+def test_main_index_without_workflows(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, "argv", ["dawgz", "0"])
+    with pytest.raises(SystemExit, match="No workflow to index"):
+        main()
+
+
+def test_main_invalid_array_index(
+    capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    @dawgz.job
+    def fan(i: int) -> None:
+        print(i)
+
+    dawgz.schedule(
+        dawgz.array(fan(0), fan(1), fan(2), name="fan"),
+        name="arrays",
+        backend="async",
+        quiet=True,
+    )
+
+    monkeypatch.setattr(sys, "argv", ["dawgz", "0", "0", "99"])
+    with pytest.raises(SystemExit, match="Job array index 99 is out of range"):
+        main()
+
+
+def test_main_valid_array_index(
+    capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    @dawgz.job
+    def fan(i: int) -> None:
+        print(f"index {i}")
+
+    dawgz.schedule(
+        dawgz.array(fan(0), fan(1), fan(2), name="fan"),
+        name="arrays",
+        backend="async",
+        quiet=True,
+    )
+
+    monkeypatch.setattr(sys, "argv", ["dawgz", "0", "0", "2"])
+
+    main()
+
+    out = capsys.readouterr().out
+    assert "index 2" in out
+
+
+def test_main_missing_workflow_files(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "dawgz.__main__.list_workflows",
+        lambda: [["ghost", "gone-uid", "2025-01-01 00:00:00", "async", "1", "0"]],
+    )
+    monkeypatch.setattr(sys, "argv", ["dawgz", "0"])
+
+    with pytest.raises(SystemExit, match="files of workflow 'gone-uid' are missing"):
+        main()
+
+
+def test_main_cancel_invalid_workflow_index(
+    dummy_workflow: dawgz.Scheduler, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["dawgz", "99", "--cancel"])
+    with pytest.raises(SystemExit, match="Workflow index 99 is out of range"):
         main()

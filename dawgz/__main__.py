@@ -11,8 +11,8 @@ from datetime import datetime, timedelta
 from typing import Literal
 
 from dawgz import Scheduler, get_dawgz_dir
-from dawgz.schedulers.core import format_states
-from dawgz.utils import parse_timestamp
+from dawgz.render import format_states
+from dawgz.utils import at, parse_timestamp
 
 DESCRIPTION = """\
 Inspect the workflows scheduled with DAWGZ.
@@ -45,6 +45,18 @@ def list_workflows() -> list[list[str]]:
             return list(csv.reader(f))
     else:
         return []
+
+
+def load_workflow(workflows: list[list[str]], workflow: int) -> Scheduler:
+    r"""Loads the scheduler of a workflow by index."""
+
+    _, uid, *_ = at(workflows, workflow, "workflow")
+    path = get_dawgz_dir() / uid
+
+    try:
+        return Scheduler.load(path)
+    except FileNotFoundError as e:
+        raise FileNotFoundError(f"The files of workflow '{uid}' are missing from '{path}'.") from e
 
 
 def report(
@@ -99,8 +111,7 @@ def report(
 
         renderables = [table]
     else:
-        _, uid, *_ = workflows[workflow]
-        scheduler = Scheduler.load(get_dawgz_dir() / uid)
+        scheduler = load_workflow(workflows, workflow)
 
         if job is None:
             renderables = scheduler.report()
@@ -126,10 +137,7 @@ def cancel(
     i: int | None = None,
 ) -> None:
     workflows = list_workflows()
-
-    row = workflows[workflow]
-    uuid = row[1]
-    scheduler = Scheduler.load(get_dawgz_dir() / uuid)
+    scheduler = load_workflow(workflows, workflow)
 
     if job is None:
         message = scheduler.cancel()
@@ -140,7 +148,7 @@ def cancel(
         print(message)
 
 
-def main() -> None:
+def main() -> int:
     # Parser
     parser = argparse.ArgumentParser(
         description=DESCRIPTION,
@@ -188,19 +196,24 @@ def main() -> None:
     args = parser.parse_args()
 
     # Action
-    if args.cancel:
-        cancel(args.workflow, args.job, args.i)
-    else:
-        report(
-            args.workflow,
-            args.job,
-            args.i,
-            args.entry,
-            args.raw,
-            args.since,
-            args.before,
-            args.fetch_states,
-        )
+    try:
+        if args.cancel:
+            cancel(args.workflow, args.job, args.i)
+        else:
+            report(
+                args.workflow,
+                args.job,
+                args.i,
+                args.entry,
+                args.raw,
+                args.since,
+                args.before,
+                args.fetch_states,
+            )
+    except (FileNotFoundError, IndexError) as e:
+        raise SystemExit(f"dawgz: error: {e}") from e
+
+    return 0
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@ import pytest
 
 from datetime import datetime, timedelta
 
-from dawgz.utils import cat, parse_duration, parse_timestamp
+from dawgz.utils import at, cat, parse_duration, parse_timestamp
 
 
 @pytest.mark.parametrize(
@@ -91,3 +91,53 @@ def test_parse_timestamp(text: str, expected: datetime | timedelta) -> None:
 def test_parse_timestamp_invalid() -> None:
     with pytest.raises(ValueError, match="Invalid date-time or duration"):
         parse_timestamp("yesterday")
+
+
+@pytest.mark.parametrize(
+    "index, expected",
+    [
+        (0, "a"),
+        (1, "b"),
+        (2, "c"),
+        (-1, "c"),
+        (-2, "b"),
+        (-3, "a"),
+    ],
+)
+def test_at(index: int, expected: str) -> None:
+    assert at(["a", "b", "c"], index) == expected
+
+
+@pytest.mark.parametrize("index", [3, 4, -4, 99, -99])
+def test_at_out_of_range(index: int) -> None:
+    with pytest.raises(IndexError, match="out of range"):
+        at(["a", "b", "c"], index)
+
+
+def test_at_reports_the_valid_range() -> None:
+    with pytest.raises(IndexError, match=r"between -3 and 2"):
+        at(["a", "b", "c"], 99)
+
+
+def test_at_empty() -> None:
+    with pytest.raises(IndexError, match="No element to index"):
+        at([], 0)
+
+
+def test_at_name_is_used_in_the_message() -> None:
+    with pytest.raises(IndexError, match="Workflow index 9 is out of range"):
+        at(["a", "b"], 9, "workflow")
+
+    with pytest.raises(IndexError, match="No job to index"):
+        at([], 0, "job")
+
+
+def test_at_of_range_returns_the_resolved_index() -> None:
+    # range(len(sequence)) is how callers recover the index itself.
+    assert at(range(3), -1) == 2
+    assert at(range(3), 0) == 0
+
+
+def test_at_works_with_tuples_and_strings() -> None:
+    assert at(("x", "y"), -1) == "y"
+    assert at("abc", -2) == "b"

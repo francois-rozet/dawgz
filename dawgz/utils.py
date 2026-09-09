@@ -10,10 +10,13 @@ import sys
 import traceback
 import uuid
 
+from collections.abc import Sequence
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import IO, Any, overload
+from typing import IO, Any, TypeVar, overload
 from wonderwords import RandomWord
+
+T = TypeVar("T")
 
 BYTES_HEADER = b"BYTES_LIST"
 BYTES_U64 = struct.Struct("<Q")
@@ -40,6 +43,30 @@ def as_scalar(x: Any) -> bool | int | float | str:
             return T(x)
 
     return str(x)
+
+
+def at(sequence: Sequence[T], index: int, name: str = "element") -> T:
+    r"""Returns the element of a sequence at an index, ensuring that it is within bounds.
+
+    Use `range(len(sequence))` as the sequence to get the resolved index itself.
+
+    Arguments:
+        sequence: The sequence to index.
+        index: The index of the element, negative to count from the end.
+        name: The name of the elements, used in the error message.
+    """
+
+    length = len(sequence)
+
+    if length == 0:
+        raise IndexError(f"No {name} to index.")
+    elif -length <= index < length:
+        return sequence[index]
+    else:
+        raise IndexError(
+            f"{name.capitalize()} index {index} is out of range. "
+            f"Expected an index between {-length} and {length - 1}."
+        )
 
 
 def bytes_dump(file: IO[bytes], items: list[bytes]) -> None:
