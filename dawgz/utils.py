@@ -14,7 +14,6 @@ from collections.abc import Sequence
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import IO, Any, TypeVar, overload
-from wonderwords import RandomWord
 
 T = TypeVar("T")
 
@@ -166,6 +165,7 @@ def future(obj: Any, return_exceptions: bool = False) -> asyncio.Future:
 
 def human_uuid() -> str:
     r"""Returns a human-readable UUID."""
+    from wonderwords import RandomWord
 
     adjective = RandomWord().word(
         word_min_length=6,
