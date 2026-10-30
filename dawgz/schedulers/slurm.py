@@ -10,9 +10,10 @@ import rich.table
 import subprocess
 import time
 
-from collections import Counter
+from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import NamedTuple
 
 from .core import (
     JobNeverSatisfiedError,
@@ -23,8 +24,55 @@ from ..render import ANSITheme
 from ..utils import at
 from ..workflow import Job, JobArray
 
-SACCT_CACHE: dict[str, tuple[float, dict[str, str]]] = {}
+
+class SacctTable(NamedTuple):
+    table: dict[str, str] = defaultdict()
+    when: float = float("-inf")
+
+
+SACCT_CACHE: dict[str, SacctTable] = defaultdict(SacctTable)
 SACCT_TTL: float = 5.0  # seconds
+SACCT_CHUNK: int = 64
+
+
+def sacct_cmd(jobids: list[str]) -> str:
+    return subprocess.run(
+        ["sacct", "-j", ",".join(jobids), "-o", "JobID,State", "-n", "-P", "-X"],
+        capture_output=True,
+        check=True,
+        text=True,
+    ).stdout
+
+
+def sacct(*jobids: str) -> dict[str, str]:
+    now = time.monotonic()
+    jobids = sorted(set(jobids))
+    stale = [jobid for jobid in jobids if now >= SACCT_CACHE[jobid].when + SACCT_TTL]
+
+    if stale:
+        chunks = [stale[i : i + SACCT_CHUNK] for i in range(0, len(stale), SACCT_CHUNK)]
+
+        with ThreadPoolExecutor() as executor:
+            text = "".join(executor.map(sacct_cmd, chunks))
+
+        tables = {jobid: {} for jobid in stale}
+
+        for line in text.splitlines():
+            key, state = line.split("|")
+            jobid, *_ = key.split("_")
+            tables[jobid][key] = state
+
+        for jobid in stale:
+            SACCT_CACHE[jobid] = SacctTable(tables[jobid], now)
+
+    if len(jobids) == 1:
+        table = SACCT_CACHE[jobids[0]].table
+    else:
+        table = {}
+        for jobid in jobids:
+            table.update(SACCT_CACHE[jobid].table)
+
+    return table
 
 
 class SlurmScheduler(Scheduler):
@@ -48,29 +96,9 @@ class SlurmScheduler(Scheduler):
         "timeout": "time",
     }
 
-    @staticmethod
-    def sacct(jobid: str) -> dict[str, str]:
-        now = time.monotonic()
-        then, states = SACCT_CACHE.get(jobid, (float("-inf"), None))
-
-        if now < then + SACCT_TTL:
-            return states
-
-        text = subprocess.run(
-            ["sacct", "-j", jobid, "-o", "JobID,State", "-n", "-P", "-X"],
-            capture_output=True,
-            check=True,
-            text=True,
-        ).stdout.strip("\n")
-
-        states = dict(line.split("|") for line in text.splitlines())
-
-        SACCT_CACHE[jobid] = (now, states)
-
-        return states
-
     def state(self, job: Job | None = None, i: int | None = None) -> Counter[str] | str:
         if job is None:
+            sacct(*self.results.values())
             return super().state()
         elif isinstance(job, JobArray) and i is None:
             return super().state(job)
@@ -78,7 +106,7 @@ class SlurmScheduler(Scheduler):
             return "CANCELLED"
 
         jobid = self.results[job]
-        table = self.sacct(jobid)
+        table = sacct(jobid)
 
         if isinstance(job, JobArray):
             return table.get(f"{jobid}_{i}", "PENDING")
@@ -108,17 +136,15 @@ class SlurmScheduler(Scheduler):
             table.add_column("State", justify="left", no_wrap=True)
             table.add_column("ID", justify="right", no_wrap=True)
 
-            with ThreadPoolExecutor() as executor:
-                states = executor.map(lambda job: self.lookup(job, entry="state"), self.order)
-                states = list(states)
+            sacct(*self.results.values())
 
-            for (job, i), state in zip(self.order.items(), states, strict=True):  # noqa: PLR1704
+            for job, i in self.order.items():  # noqa: PLR1704
                 if job in self.traces:
                     jobid = None
                 else:
                     jobid = self.results[job]
 
-                table.add_row(str(i), str(job), state, jobid)
+                table.add_row(str(i), str(job), self.lookup(job, entry="state"), jobid)
 
             return [table]
         else:

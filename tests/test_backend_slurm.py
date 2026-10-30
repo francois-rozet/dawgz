@@ -4,11 +4,9 @@ import os
 import pytest
 import re
 import subprocess
-import threading
 
 from collections.abc import Generator
 from pathlib import Path
-from time import sleep
 from unittest.mock import MagicMock, patch
 
 import dawgz
@@ -71,11 +69,11 @@ def mock_subprocess_run(squeue: dict) -> Generator[MagicMock]:
                 args=cmd, returncode=0, stdout="terminating job\n", stderr=""
             )
         elif cmd[0] == "sacct":
-            prefix = cmd[2]
+            prefixes = cmd[2].split(",")
             lines = []
 
             for jobid, status in squeue.items():
-                if jobid.startswith(prefix):
+                if jobid.split("_")[0] in prefixes:
                     lines.append(f"{jobid}|{status}")
 
             return subprocess.CompletedProcess(
@@ -296,33 +294,58 @@ def test_cancel() -> None:
     assert scheduler.state(job) == "CANCELLED"
 
 
-def test_report_fetches_states_in_parallel() -> None:
-    a_job = echo("a")
-    b_job = echo("b")
-    scheduler = dawgz.schedule(a_job, b_job, backend="slurm")
+def test_state_calls_sacct_once(mock_subprocess_run: MagicMock) -> None:
+    array = dawgz.array(echo("a"), echo("b"), echo("c"))
+    scheduler = dawgz.schedule(echo("d"), echo("e"), array, backend="slurm")
+    dawgz.schedulers.slurm.SACCT_CACHE.clear()
+    mock_subprocess_run.reset_mock()
 
-    active = 0
-    max_active = 0
-    lock = threading.Lock()
+    assert scheduler.state() == {"PENDING": 5}
+    scheduler.report()
 
-    def sacct(jobid: str) -> dict[str, str]:
-        nonlocal active, max_active
+    calls = [call.args[0] for call in mock_subprocess_run.call_args_list]
+    calls = [cmd for cmd in calls if cmd[0] == "sacct"]
 
-        with lock:
-            active += 1
-            max_active = max(max_active, active)
+    assert len(calls) == 1
+    assert sorted(calls[0][2].split(",")) == sorted(scheduler.results.values())
 
-        sleep(0.05)
 
-        with lock:
-            active -= 1
+def test_sacct_chunks(squeue: dict[str, str], mock_subprocess_run: MagicMock) -> None:
+    jobids = [f"{i:03d}" for i in range(300)]
 
-        return {jobid: "PENDING"}
+    for jobid in jobids:
+        squeue[jobid] = "RUNNING"
 
-    with patch.object(dawgz.schedulers.slurm.SlurmScheduler, "sacct", side_effect=sacct):
-        scheduler.report()
+    squeue["299_0"] = "PENDING"
+    dawgz.schedulers.slurm.SACCT_CACHE.clear()
 
-    assert max_active == 2
+    states = dawgz.schedulers.slurm.sacct(*jobids)
+
+    calls = [call.args[0] for call in mock_subprocess_run.call_args_list]
+    calls = [cmd[2].split(",") for cmd in calls if cmd[0] == "sacct"]
+
+    assert len(calls) == -(-len(jobids) // dawgz.schedulers.slurm.SACCT_CHUNK)
+    assert all(len(chunk) <= dawgz.schedulers.slurm.SACCT_CHUNK for chunk in calls)
+    assert sorted(sum(calls, [])) == jobids
+    assert states == {**dict.fromkeys(jobids, "RUNNING"), "299_0": "PENDING"}
+
+
+def test_sacct_fetches_stale_only(squeue: dict[str, str], mock_subprocess_run: MagicMock) -> None:
+    squeue["000"] = "RUNNING"
+    squeue["001"] = "PENDING"
+    dawgz.schedulers.slurm.SACCT_CACHE.clear()
+
+    assert dawgz.schedulers.slurm.sacct("000") == {"000": "RUNNING"}
+
+    squeue["000"] = "COMPLETED"
+    mock_subprocess_run.reset_mock()
+
+    assert dawgz.schedulers.slurm.sacct("000", "001") == {"000": "RUNNING", "001": "PENDING"}
+
+    calls = [call.args[0] for call in mock_subprocess_run.call_args_list]
+    calls = [cmd[2].split(",") for cmd in calls if cmd[0] == "sacct"]
+
+    assert calls == [["001"]]
 
 
 def test_state_array_states(squeue: dict[str, str]) -> None:

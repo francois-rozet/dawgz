@@ -13,7 +13,6 @@ import rich.text
 from abc import ABC, abstractmethod
 from collections import Counter
 from collections.abc import Iterator
-from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -87,12 +86,12 @@ class Scheduler(ABC):
 
         if job is None:
             states = Counter()
-            with ThreadPoolExecutor() as executor:
-                for state in executor.map(self.state, self.order):
-                    if isinstance(state, Counter):
-                        states.update(state)
-                    else:
-                        states.update([state])
+            for job in self.order:  # noqa: PLR1704
+                state = self.state(job)
+                if isinstance(state, Counter):
+                    states.update(state)
+                else:
+                    states.update([state])
             return states
         elif isinstance(job, JobArray) and i is None:
             return Counter(self.state(job, j) for j in range(len(job)))
