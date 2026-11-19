@@ -4,7 +4,7 @@ import pytest
 
 from datetime import datetime, timedelta
 
-from dawgz.utils import at, cat, parse_duration, parse_timestamp
+from dawgz.utils import at, cat, expand_array_spec, parse_duration, parse_timestamp
 
 
 @pytest.mark.parametrize(
@@ -141,3 +141,16 @@ def test_at_of_range_returns_the_resolved_index() -> None:
 def test_at_works_with_tuples_and_strings() -> None:
     assert at(("x", "y"), -1) == "y"
     assert at("abc", -2) == "b"
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("[0-3]", [0, 1, 2, 3]),
+        ("[0-9%2]", list(range(10))),
+        ("[1,3,5-6]", [1, 3, 5, 6]),
+        ("[0-8:4]", [0, 4, 8]),
+    ],
+)
+def test_expand_array_spec(text: str, expected: list[int]) -> None:
+    assert expand_array_spec(text) == expected

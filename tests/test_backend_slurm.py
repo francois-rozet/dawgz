@@ -73,7 +73,8 @@ def mock_subprocess_run(squeue: dict) -> Generator[MagicMock]:
             lines = []
 
             for jobid, status in squeue.items():
-                if jobid.split("_")[0] in prefixes:
+                stem, _, _ = jobid.partition("_")
+                if stem in prefixes:
                     lines.append(f"{jobid}|{status}")
 
             return subprocess.CompletedProcess(
@@ -361,3 +362,21 @@ def test_state_array_states(squeue: dict[str, str]) -> None:
     assert scheduler.state() == {"PENDING": 1, "RUNNING": 2}
     assert scheduler.state(array) == {"PENDING": 1, "RUNNING": 2}
     assert scheduler.state(array, 1) == "RUNNING"
+
+
+def test_state_array_collapsed(squeue: dict[str, str]) -> None:
+    array = dawgz.array(*(echo(i) for i in range(10)))
+    scheduler = dawgz.schedule(array, backend="slurm")
+    jobid = scheduler.results[array]
+
+    # sacct -X collapses array tasks that never started into a single line
+    squeue.clear()
+    squeue[f"{jobid}_0"] = "COMPLETED"
+    squeue[f"{jobid}_1"] = "CANCELLED by 1000"
+    squeue[f"{jobid}_[2-4,6,8-9:1%2]"] = "CANCELLED by 1000"
+    squeue[f"{jobid}_[5,7]"] = "PENDING"
+    dawgz.schedulers.slurm.SACCT_CACHE.clear()
+
+    assert scheduler.state(array) == {"COMPLETED": 1, "CANCELLED": 7, "PENDING": 2}
+    assert scheduler.state(array, 3) == "CANCELLED"
+    assert scheduler.state(array, 7) == "PENDING"

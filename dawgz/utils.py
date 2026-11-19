@@ -139,6 +139,23 @@ def eprint(*args, **kwargs) -> None:
     print(*args, file=sys.stderr, **kwargs)
 
 
+def expand_array_spec(spec: str) -> list[int]:
+    r"""Expands a Slurm array spec, such as [0-2,4,7-9%3], into indices."""
+
+    spec, _, _ = spec.strip("[]").partition("%")
+    indices = []
+
+    for part in spec.split(","):
+        if "-" in part:
+            span, _, step = part.partition(":")
+            start, _, stop = span.partition("-")
+            indices.extend(range(int(start), int(stop) + 1, int(step or 1)))
+        elif part:
+            indices.append(int(part))
+
+    return sorted(indices)
+
+
 def future(obj: Any, return_exceptions: bool = False) -> asyncio.Future:
     r"""Transforms any object to an awaitable future."""
 

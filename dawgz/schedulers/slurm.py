@@ -21,7 +21,7 @@ from .core import (
     Scheduler,
 )
 from ..render import ANSITheme
-from ..utils import at
+from ..utils import at, expand_array_spec
 from ..workflow import Job, JobArray
 
 
@@ -59,8 +59,14 @@ def sacct(*jobids: str) -> dict[str, str]:
 
         for line in text.splitlines():
             key, state = line.split("|")
-            jobid, *_ = key.split("_")
-            tables[jobid][key] = state
+            jobid, _, spec = key.partition("_")
+            state, _, _ = state.partition(" by ")
+
+            if spec.startswith("["):
+                for i in expand_array_spec(spec):
+                    tables[jobid][f"{jobid}_{i}"] = state
+            else:
+                tables[jobid][key] = state
 
         for jobid in stale:
             SACCT_CACHE[jobid] = SacctTable(tables[jobid], now)
@@ -291,7 +297,7 @@ class SlurmScheduler(Scheduler):
                 text=True,
             ).stdout
 
-            jobid, *_ = text.strip("\n").split(";")  # ignore cluster name
+            jobid, _, _ = text.strip("\n").partition(";")  # ignore cluster name
 
             return jobid
         except Exception as e:
